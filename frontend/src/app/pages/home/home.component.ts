@@ -88,7 +88,7 @@ import { InterestService } from '../../services/interest.service';
             <div class="info-wrap">
               <div class="info-title">{{ b.title }}</div>
               <div class="info-author">{{ b.author }}</div>
-              <span class="info-borrows">{{ b.borrow_count }} borrows</span>
+              <span class="info-badge">{{ b.borrow_count }} borrows</span>
             </div>
           </div>
         </div>
@@ -161,9 +161,8 @@ import { InterestService } from '../../services/interest.service';
     .info-wrap { padding: 16px; flex: 1; display: flex; flex-direction: column; gap: 6px; }
     .info-title { font-size: 1rem; font-weight: 700; color: var(--text); line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
     .info-author { font-size: 0.85rem; color: var(--text3); margin-bottom: 4px; }
-    .info-badge { font-size: 0.75rem; font-weight: 700; padding: 4px 8px; border-radius: 8px; background: rgba(56,139,253,0.1); color: var(--accent); align-self: start; }
+    .info-badge { font-size: 0.75rem; font-weight: 700; padding: 4px 8px; border-radius: 8px; background: rgba(56,139,253,0.1); color: var(--accent); align-self: start; margin-top: auto; }
     .info-badge.danger { background: rgba(248,81,73,0.1); color: var(--danger); }
-    .info-borrows { font-size: 0.8rem; color: var(--accent); font-weight: 600; }
 
     /* Recommended Styles */
     .recommended-section { 
