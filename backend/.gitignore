@@ -1,0 +1,6 @@
+.env
+.env.local
+library.db
+
+# Compiled output
+/target

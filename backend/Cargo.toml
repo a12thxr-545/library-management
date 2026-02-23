@@ -1,0 +1,23 @@
+[package]
+name = "library-backend"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "library-backend"
+path = "src/main.rs"
+
+[dependencies]
+actix-web = "4"
+actix-cors = "0.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.7", features = [ "runtime-tokio", "tls-rustls", "postgres", "chrono", "uuid" ] }
+bcrypt = "0.15"
+jsonwebtoken = "9"
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+tokio = { version = "1", features = ["full"] }
+env_logger = "0.11"
+log = "0.4"
+dotenv = "0.15"

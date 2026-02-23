@@ -1,0 +1,170 @@
+use crate::{auth, db::DbPool, models::*};
+use actix_web::{web, HttpRequest, HttpResponse};
+use bcrypt::{hash, verify, DEFAULT_COST};
+use uuid::Uuid;
+
+pub async fn register(pool: web::Data<DbPool>, req: web::Json<RegisterRequest>) -> HttpResponse {
+    let now = chrono::Utc::now().to_rfc3339();
+    let id = Uuid::new_v4().to_string();
+
+    // SRS roles: student | professor | librarian
+    let role = match req.role.as_deref() {
+        Some("professor") => "professor",
+        Some("librarian") => "librarian",
+        _ => "student",
+    };
+
+    // email is optional — auto-generate if not provided
+    let email = req
+        .email
+        .as_deref()
+        .filter(|e| !e.is_empty())
+        .map(|e| e.to_string())
+        .unwrap_or_else(|| format!("{}@library.local", req.username));
+
+    let password_hash = match hash(&req.password, DEFAULT_COST) {
+        Ok(h) => h,
+        Err(_) => {
+            return HttpResponse::InternalServerError()
+                .json(ApiResponse::<()>::error("Failed to hash password"))
+        }
+    };
+
+    match sqlx::query(
+        "INSERT INTO users (id, username, email, password_hash, full_name, phone, role, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)",
+    )
+    .bind(&id)
+    .bind(&req.username)
+    .bind(&email)
+    .bind(&password_hash)
+    .bind(&req.full_name)
+    .bind(&req.phone)
+    .bind(role)
+    .bind(&now)
+    .execute(&pool.pool)
+    .await {
+        Ok(_) => {
+            let token = crate::auth::create_token(&id, &req.username, role).unwrap_or_default();
+            let user = UserProfile {
+                id,
+                username: req.username.clone(),
+                email: email.clone(),
+                full_name: req.full_name.clone(),
+                phone: req.phone.clone(),
+                address: None,
+                role: role.to_string(),
+                avatar_url: None,
+                created_at: now,
+            };
+            HttpResponse::Created().json(ApiResponse::success(AuthResponse { token, user }))
+        }
+        Err(e) => {
+            if e.to_string().contains("UNIQUE") {
+                HttpResponse::Conflict().json(ApiResponse::<()>::error("Username or email already exists"))
+            } else {
+                HttpResponse::InternalServerError().json(ApiResponse::<()>::error("Registration failed"))
+            }
+        }
+    }
+}
+
+pub async fn login(pool: web::Data<DbPool>, req: web::Json<LoginRequest>) -> HttpResponse {
+    let result = sqlx::query_as::<_, User>(
+        "SELECT id, username, email, password_hash, full_name, phone, address, role, avatar_url, created_at, updated_at FROM users WHERE username = $1",
+    )
+    .bind(&req.username)
+    .fetch_one(&pool.pool)
+    .await;
+
+    match result {
+        Ok(user) => {
+            if verify(&req.password, &user.password_hash).unwrap_or(false) {
+                let token =
+                    auth::create_token(&user.id, &user.username, &user.role).unwrap_or_default();
+                let profile = UserProfile {
+                    id: user.id,
+                    username: user.username,
+                    email: user.email,
+                    full_name: user.full_name,
+                    phone: user.phone,
+                    address: user.address,
+                    role: user.role,
+                    avatar_url: user.avatar_url,
+                    created_at: user.created_at,
+                };
+                HttpResponse::Ok().json(ApiResponse::success(AuthResponse {
+                    token,
+                    user: profile,
+                }))
+            } else {
+                HttpResponse::Unauthorized().json(ApiResponse::<()>::error("Invalid credentials"))
+            }
+        }
+        Err(_) => {
+            HttpResponse::Unauthorized().json(ApiResponse::<()>::error("Invalid credentials"))
+        }
+    }
+}
+
+pub async fn me(pool: web::Data<DbPool>, req: HttpRequest) -> HttpResponse {
+    let claims = match extract_claims(&req) {
+        Some(c) => c,
+        None => return HttpResponse::Unauthorized().json(ApiResponse::<()>::error("Unauthorized")),
+    };
+
+    let result = sqlx::query_as::<_, UserProfile>(
+        "SELECT id, username, email, full_name, phone, address, role, avatar_url, created_at FROM users WHERE id = $1",
+    )
+    .bind(&claims.sub)
+    .fetch_one(&pool.pool)
+    .await;
+
+    match result {
+        Ok(user) => HttpResponse::Ok().json(ApiResponse::success(user)),
+        Err(_) => HttpResponse::NotFound().json(ApiResponse::<()>::error("User not found")),
+    }
+}
+
+pub fn extract_claims(req: &HttpRequest) -> Option<crate::models::Claims> {
+    let auth_header = req.headers().get("Authorization")?;
+    let auth_str = auth_header.to_str().ok()?;
+    if !auth_str.starts_with("Bearer ") {
+        return None;
+    }
+    let token = &auth_str[7..];
+    crate::auth::verify_token(token).ok()
+}
+
+pub async fn list_users(pool: web::Data<DbPool>, req: HttpRequest) -> HttpResponse {
+    let claims = match extract_claims(&req) {
+        Some(c) => c,
+        None => return HttpResponse::Unauthorized().json(ApiResponse::<()>::error("Unauthorized")),
+    };
+
+    // Check role from DB to support real-time updates
+    let db_role: String = match sqlx::query_scalar("SELECT role FROM users WHERE id = $1")
+        .bind(&claims.sub)
+        .fetch_one(&pool.pool)
+        .await
+    {
+        Ok(r) => r,
+        Err(_) => return HttpResponse::Forbidden().json(ApiResponse::<()>::error("Forbidden")),
+    };
+
+    if db_role != "librarian" {
+        return HttpResponse::Forbidden()
+            .json(ApiResponse::<()>::error("Forbidden: Librarian only"));
+    }
+
+    match sqlx::query_as::<_, UserProfile>(
+        "SELECT id, username, email, full_name, phone, address, role, avatar_url, created_at FROM users ORDER BY created_at DESC"
+    )
+    .fetch_all(&pool.pool)
+    .await {
+        Ok(users) => HttpResponse::Ok().json(ApiResponse::success(users)),
+        Err(e) => {
+            log::error!("Failed to fetch members: {}", e);
+            HttpResponse::InternalServerError().json(ApiResponse::<()>::error("Database error"))
+        }
+    }
+}

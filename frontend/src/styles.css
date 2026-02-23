@@ -1,0 +1,110 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+  /* Dark Theme (Default) */
+  --bg: #0f1117;
+  --bg2: #161b22;
+  --bg3: #1c2128;
+  --border: #30363d;
+  --accent: #388bfd;
+  --accent2: #0969da;
+  --text: #e6edf3;
+  --text2: #8b949e;
+  --text3: #6e7681;
+  --success: #3fb950;
+  --danger: #f85149;
+  --warning: #d29922;
+  --radius: 8px;
+}
+
+body.light-theme {
+  --bg: #ffffff;
+  --bg2: #f6f8fa;
+  --bg3: #ffffff;
+  --border: #d0d7de;
+  --accent: #0969da;
+  --accent2: #0550ae;
+  --text: #1f2328;
+  --text2: #65717d;
+  --text3: #8c959f;
+  --success: #1a7f37;
+  --danger: #cf222e;
+  --warning: #9a6700;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  overflow-x: hidden;
+}
+
+body {
+  font-family: 'Inter', -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: 16px;
+  /* Prevent iOS auto-zoom on focus */
+}
+
+@media (min-width: 769px) {
+
+  input,
+  select,
+  textarea {
+    font-size: 0.875rem;
+  }
+}
+
+.material-icons {
+  vertical-align: middle;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+::selection {
+  background: rgba(9, 105, 218, 0.25);
+}
