@@ -115,3 +115,20 @@ export interface BorrowRequest {
   reservation_id?: string;
   due_date?: string;
 }
+
+export interface Wallet {
+  id: string;
+  user_id: string;
+  balance: number;
+  updated_at: string;
+}
+
+export interface WalletTransaction {
+  id: string;
+  user_id: string;
+  /** topup | fine_payment */
+  tx_type: string;
+  amount: number;
+  description: string;
+  created_at: string;
+}

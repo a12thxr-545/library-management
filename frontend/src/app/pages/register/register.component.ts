@@ -67,22 +67,34 @@ import { AuthService } from '../../services/auth.service';
     .field { margin-bottom: 14px; }
     label { display: block; font-size: 0.8rem; color: var(--text2); margin-bottom: 6px; font-weight: 500; }
     input, select {
-      width: 100%; padding: 8px 12px; background: var(--bg);
+      width: 100%; padding: 10px 12px; background: var(--bg);
       border: 1px solid var(--border); border-radius: var(--radius);
       color: var(--text); font-size: 0.875rem; outline: none; font-family: inherit;
+      box-sizing: border-box;
     }
-    input:focus, select:focus { border-color: var(--accent); }
+    select {
+      appearance: none;
+      background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      background-size: 16px;
+      padding-right: 40px;
+    }
+    input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(9,105,218,0.1); }
     .btn-submit {
-      width: 100%; padding: 9px; background: var(--accent); color: white;
-      border: none; border-radius: var(--radius); font-size: 0.875rem;
-      font-weight: 600; margin-top: 4px; cursor: pointer; font-family: inherit;
+      width: 100%; padding: 12px; background: var(--accent); color: white;
+      border: none; border-radius: var(--radius); font-size: 0.95rem;
+      font-weight: 700; margin-top: 10px; cursor: pointer; font-family: inherit;
+      transition: all 0.2s;
     }
-    .btn-submit:hover:not(:disabled) { background: var(--accent2); }
+    .btn-submit:hover:not(:disabled) { background: var(--accent2); transform: translateY(-1px); }
     .btn-submit:disabled { opacity: 0.6; cursor: not-allowed; }
-    .auth-link { text-align: center; margin-top: 20px; color: var(--text2); font-size: 0.8rem; }
-    @media (max-width: 480px) {
-      .auth-card { padding: 24px 16px; }
+    .auth-link { text-align: center; margin-top: 24px; color: var(--text2); font-size: 0.85rem; }
+    @media (max-width: 500px) {
+      .auth-card { padding: 24px 20px; border: none; background: transparent; }
       .row2 { grid-template-columns: 1fr; gap: 0; }
+      h1 { text-align: center; font-size: 1.5rem; }
+      .auth-logo { text-align: center; justify-content: center; display: flex; align-items: center; gap: 8px; }
     }
   `]
 })

@@ -18,6 +18,7 @@ import { ThemeService } from '../../../services/theme.service';
         <div class="nav-links" [class.open]="menuOpen" (click)="menuOpen = false">
           <a routerLink="/books" routerLinkActive="active"><i class="material-icons">book</i> Books</a>
           <a routerLink="/categories" routerLinkActive="active"><i class="material-icons">category</i> Categories</a>
+          <a routerLink="/wallet" routerLinkActive="active"><i class="material-icons">account_balance_wallet</i> Wallet</a>
           <a routerLink="/payment" routerLinkActive="active"><i class="material-icons">payments</i> Payment</a>
           <a *ngIf="isLibrarian" routerLink="/admin/borrows" routerLinkActive="active" class="admin-link"><i class="material-icons">history_edu</i> Loans</a>
           <a *ngIf="isLibrarian" routerLink="/admin/users" routerLinkActive="active" class="admin-link"><i class="material-icons">people</i> Members</a>
@@ -54,6 +55,9 @@ import { ThemeService } from '../../../services/theme.service';
               </a>
               <a routerLink="/payment" class="dropdown-item">
                 <i class="material-icons">payments</i> Payment
+              </a>
+              <a routerLink="/wallet" class="dropdown-item">
+                <i class="material-icons">account_balance_wallet</i> Wallet
               </a>
               <a *ngIf="isLibrarian" routerLink="/admin/borrows" class="dropdown-item">
                 <i class="material-icons">history_edu</i> Loan Records
@@ -171,11 +175,11 @@ import { ThemeService } from '../../../services/theme.service';
     /* Sign Out inside mobile hamburger menu */
     .menu-signout {
       width: 100%; text-align: left; background: none; border: none;
-      border-top: 1px solid var(--border); margin-top: 8px; padding: 12px 12px;
-      font-size: 0.875rem; font-family: inherit; color: var(--danger); cursor: pointer;
-      display: flex; align-items: center; gap: 10px;
+      border-top: 1px solid var(--border); margin-top: 8px; padding: 14px 16px;
+      font-size: 0.95rem; font-family: inherit; color: var(--danger); cursor: pointer;
+      display: flex; align-items: center; gap: 12px; transition: background 0.2s;
     }
-    .menu-signout:hover { background: rgba(248,81,73,0.08); border-radius: var(--radius); }
+    .menu-signout:hover { background: rgba(248,81,73,0.08); }
 
     .theme-btn {
       background: none; border: none; color: var(--text2);
@@ -209,18 +213,23 @@ import { ThemeService } from '../../../services/theme.service';
 
       .nav-links {
         position: fixed; top: 56px; left: 0; right: 0; bottom: 0;
-        background: var(--bg2); border-top: 1px solid var(--border);
-        flex-direction: column; gap: 0; padding: 20px;
-        transform: translateY(-100%); opacity: 0; pointer-events: none;
-        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.15s;
+        background: var(--bg); border-top: 1px solid var(--border);
+        flex-direction: column; gap: 4px; padding: 12px;
+        transform: translateX(100%); opacity: 0; pointer-events: none;
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s;
         z-index: 99; overflow-y: auto;
-        box-shadow: 0 20px 40px rgba(0,0,0,0.3);
       }
-      .nav-links.open { transform: translateY(0); opacity: 1; pointer-events: auto; }
-      .nav-links a { padding: 14px 16px; font-size: 1rem; border-radius: 10px; margin-bottom: 2px; }
-      .nav-links a:active { background: var(--bg3); }
-      .dropdown-divider.mobile-only { display: block; border-bottom: 1px solid var(--border); height: 1px; width: 100%; margin: 12px 0; }
-      .mobile-only { display: flex; color: var(--text); text-decoration: none; padding: 16px 20px; font-size: 1rem; border-radius: 12px; }
+      .nav-links.open { transform: translateX(0); opacity: 1; pointer-events: auto; }
+      .nav-links a, .nav-links button:not(.mobile-avatar) { 
+        padding: 14px 16px; font-size: 1rem; border-radius: 12px; 
+        color: var(--text); background: var(--bg2); border: 1px solid var(--border);
+        display: flex; align-items: center; gap: 12px; width: 100%;
+        text-align: left;
+      }
+      .nav-links a:active, .nav-links button:active { background: var(--bg3); }
+      .dropdown-divider.mobile-only { display: block; height: 1px; width: 100%; margin: 8px 0; background: var(--border); }
+      .mobile-only { display: flex !important; margin-bottom: 4px; }
+      .nav-links .admin-link { border-color: rgba(9,105,218,.2); color: var(--accent); }
     }
 
     @media (max-width: 480px) {

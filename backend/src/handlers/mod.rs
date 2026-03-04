@@ -5,3 +5,4 @@ pub mod categories;
 pub mod interests;
 pub mod members;
 pub mod reservations;
+pub mod wallet;

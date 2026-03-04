@@ -1,10 +1,12 @@
-use crate::{db::DbPool, handlers::auth::extract_claims, models::*};
+use crate::{db::DbPool, handlers::auth::extract_claims, models::*, realtime::Hub};
 use actix_web::{web, HttpRequest, HttpResponse};
+use std::sync::Arc;
 use uuid::Uuid;
 
 /// ยืมหนังสือ — loan duration ขึ้นกับ role (student=14วัน, professor=30วัน)
 pub async fn borrow_book(
     pool: web::Data<DbPool>,
+    hub: web::Data<Arc<Hub>>,
     req: HttpRequest,
     body: web::Json<BorrowRequest>,
 ) -> HttpResponse {
@@ -107,6 +109,22 @@ pub async fn borrow_book(
 
     let actual_days = (due_date - now).num_days();
 
+    // Realtime Notifications
+    hub.notify_user(
+        &claims.sub,
+        "LOAN_UPDATED",
+        serde_json::json!({
+            "type": "borrow",
+            "book_id": body.book_id
+        }),
+    );
+    hub.broadcast(
+        "BOOK_STOCK_UPDATED",
+        serde_json::json!({
+            "book_id": body.book_id
+        }),
+    );
+
     HttpResponse::Created().json(ApiResponse::success(serde_json::json!({
         "borrow_id": borrow_id,
         "due_date": due_str,
@@ -118,6 +136,7 @@ pub async fn borrow_book(
 /// คืนหนังสือ — คำนวณค่าปรับถ้าเกินกำหนด (FR-003)
 pub async fn return_book(
     pool: web::Data<DbPool>,
+    hub: web::Data<Arc<Hub>>,
     req: HttpRequest,
     path: web::Path<String>,
 ) -> HttpResponse {
@@ -199,6 +218,22 @@ pub async fn return_book(
                 .execute(&pool.pool)
                 .await;
             }
+
+            // Realtime Notifications
+            hub.notify_user(
+                &claims.sub,
+                "LOAN_UPDATED",
+                serde_json::json!({
+                    "type": "return",
+                    "book_id": book_id
+                }),
+            );
+            hub.broadcast(
+                "BOOK_STOCK_UPDATED",
+                serde_json::json!({
+                    "book_id": book_id
+                }),
+            );
 
             HttpResponse::Ok().json(ApiResponse::success(serde_json::json!({
                 "returned": true,

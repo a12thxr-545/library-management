@@ -4,9 +4,12 @@ mod handlers;
 mod middleware;
 mod models;
 
+mod realtime;
+
 use actix_cors::Cors;
 use actix_web::{middleware::Logger, web, App, HttpServer};
 use env_logger::Env;
+use std::sync::Arc;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -19,6 +22,9 @@ async fn main() -> std::io::Result<()> {
 
     let pool = db::init_db().await.expect("Failed to initialize database");
     let pool = web::Data::new(pool);
+
+    let hub = realtime::Hub::new();
+    let hub_data = web::Data::new(hub);
 
     log::info!("Starting Library Backend on http://{}", bind_addr);
 
@@ -33,6 +39,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)
             .wrap(Logger::default())
             .app_data(pool.clone())
+            .app_data(hub_data.clone())
             // Auth routes
             .route(
                 "/api/auth/register",
@@ -131,6 +138,22 @@ async fn main() -> std::io::Result<()> {
                 "/api/recommendations",
                 web::get().to(handlers::interests::get_recommendations),
             )
+            // Wallet routes
+            .route("/api/wallet", web::get().to(handlers::wallet::get_wallet))
+            .route(
+                "/api/wallet/topup",
+                web::post().to(handlers::wallet::top_up),
+            )
+            .route(
+                "/api/wallet/pay-fine",
+                web::post().to(handlers::wallet::pay_fine),
+            )
+            .route(
+                "/api/wallet/transactions",
+                web::get().to(handlers::wallet::wallet_transactions),
+            )
+            // Realtime WebSocket
+            .route("/api/ws", web::get().to(realtime::ws_handler))
     })
     .bind(&bind_addr)?
     .run()

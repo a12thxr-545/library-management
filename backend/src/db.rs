@@ -121,6 +121,34 @@ pub async fn init_db() -> Result<DbPool, sqlx::Error> {
     .execute(&pool)
     .await?;
 
+    sqlx::query(
+        "
+        CREATE TABLE IF NOT EXISTS wallet_transactions (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users(id),
+            tx_type TEXT NOT NULL,
+            amount DOUBLE PRECISION NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL
+        );
+    ",
+    )
+    .execute(&pool)
+    .await?;
+
+    sqlx::query(
+        "
+        CREATE TABLE IF NOT EXISTS wallets (
+            id TEXT PRIMARY KEY,
+            user_id TEXT UNIQUE NOT NULL REFERENCES users(id),
+            balance DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+            updated_at TEXT NOT NULL
+        );
+    ",
+    )
+    .execute(&pool)
+    .await?;
+
     // Seed data
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM categories")
         .fetch_one(&pool)

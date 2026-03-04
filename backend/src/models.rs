@@ -187,6 +187,38 @@ pub struct FineInfo {
     pub fine_paid: bool,
 }
 
+// ==================== WALLET ====================
+
+#[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
+pub struct Wallet {
+    pub id: String,
+    pub user_id: String,
+    pub balance: f64,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
+pub struct WalletTransaction {
+    pub id: String,
+    pub user_id: String,
+    /// topup | fine_payment
+    pub tx_type: String,
+    pub amount: f64,
+    /// description / reference
+    pub description: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TopUpRequest {
+    pub amount: f64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PayFineRequest {
+    pub borrow_id: String,
+}
+
 // ==================== COMMON ====================
 
 #[derive(Debug, Serialize)]
@@ -240,11 +272,11 @@ pub struct Claims {
     pub exp: usize,
 }
 
-/// Fine rate: 5 บาท/วัน สำหรับ student, 3 บาท/วัน สำหรับ professor
+/// Fine rate: 25 บาท/วัน สำหรับ student, 15 บาท/วัน สำหรับ professor
 pub fn fine_rate_per_day(role: &str) -> f64 {
     match role {
-        "professor" => 3.0,
-        _ => 5.0,
+        "professor" => 15.0,
+        _ => 25.0,
     }
 }
 

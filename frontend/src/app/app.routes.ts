@@ -12,6 +12,7 @@ export const routes: Routes = [
     { path: 'books/:id', loadComponent: () => import('./pages/book-detail/book-detail.component').then(m => m.BookDetailComponent), canActivate: [authGuard] },
     { path: 'categories', loadComponent: () => import('./pages/categories/categories.component').then(m => m.CategoriesComponent), canActivate: [authGuard] },
     { path: 'profile', loadComponent: () => import('./pages/profile/profile.component').then(m => m.ProfileComponent), canActivate: [authGuard] },
+    { path: 'wallet', loadComponent: () => import('./pages/wallet/wallet.component').then(m => m.WalletComponent), canActivate: [authGuard] },
     { path: 'payment', loadComponent: () => import('./pages/payment/payment.component').then(m => m.PaymentComponent), canActivate: [authGuard] },
     { path: 'admin/borrows', loadComponent: () => import('./pages/admin/admin-borrows.component').then(m => m.AdminBorrowsComponent), canActivate: [authGuard] },
     { path: 'admin/users', loadComponent: () => import('./pages/admin/admin-users.component').then(m => m.AdminUsersComponent), canActivate: [authGuard] },

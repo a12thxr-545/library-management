@@ -33,6 +33,11 @@ import { User, Borrow } from '../../models';
             <div class="stat"><strong>{{ totalFine.toFixed(0) }}</strong><span>Fine (฿)</span></div>
           </div>
 
+          <a routerLink="/wallet" class="btn-wallet">
+            <i class="material-icons" style="font-size:1rem;vertical-align:middle">account_balance_wallet</i>
+            กระเป๋าเงิน
+          </a>
+
           <a routerLink="/payment" class="btn-pay">
             <i class="material-icons" style="font-size:1rem;vertical-align:middle">payment</i>
             {{ totalFine > 0 ? 'Pay Fine ฿' + totalFine.toFixed(2) : 'Payment' }}
@@ -95,6 +100,12 @@ import { User, Borrow } from '../../models';
       cursor: pointer; text-align: center; text-decoration: none; display: block;
     }
     .btn-pay:hover { background: rgba(210,153,34,0.25); text-decoration: none; }
+    .btn-wallet {
+      width: 100%; padding: 8px; background: rgba(9,105,218,0.1); border: 1px solid rgba(9,105,218,0.3);
+      border-radius: var(--radius); color: var(--accent); font-size: 0.8rem; font-weight: 600;
+      cursor: pointer; text-align: center; text-decoration: none; display: block;
+    }
+    .btn-wallet:hover { background: rgba(9,105,218,0.2); text-decoration: none; }
 
     .tabs { display: flex; gap: 4px; margin-bottom: 12px; flex-wrap: wrap; }
     .tab { padding: 6px 14px; border-radius: 20px; font-size: 0.78rem; background: var(--bg2); border: 1px solid var(--border); color: var(--text2); cursor: pointer; font-family: inherit; }

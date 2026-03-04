@@ -126,13 +126,23 @@ pub async fn me(pool: web::Data<DbPool>, req: HttpRequest) -> HttpResponse {
 }
 
 pub fn extract_claims(req: &HttpRequest) -> Option<crate::models::Claims> {
-    let auth_header = req.headers().get("Authorization")?;
-    let auth_str = auth_header.to_str().ok()?;
-    if !auth_str.starts_with("Bearer ") {
-        return None;
-    }
-    let token = &auth_str[7..];
-    crate::auth::verify_token(token).ok()
+    let token = if let Some(auth_header) = req.headers().get("Authorization") {
+        let auth_str = auth_header.to_str().ok()?;
+        if !auth_str.starts_with("Bearer ") {
+            return None;
+        }
+        auth_str[7..].to_string()
+    } else {
+        // Fallback to query param (useful for WebSockets)
+        let query = req.query_string();
+        let params: Vec<(String, String)> = serde_urlencoded::from_str(query).ok()?;
+        params
+            .iter()
+            .find(|(k, _)| k == "token")
+            .map(|(_, v)| v.clone())?
+    };
+
+    crate::auth::verify_token(&token).ok()
 }
 
 pub async fn list_users(pool: web::Data<DbPool>, req: HttpRequest) -> HttpResponse {
