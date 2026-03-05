@@ -330,6 +330,7 @@ import { LoadingService } from '../../services/loading.service';
 
     /* ── Layout ── */
     .wallet-layout { display:grid; grid-template-columns:360px 1fr; gap:20px; align-items:start; }
+    @media (max-width:960px) { .wallet-layout { grid-template-columns:1fr; } }
     .left-col,.right-col { display:flex; flex-direction:column; gap:16px; }
 
     /* ── Wallet Card ── */
@@ -415,7 +416,8 @@ import { LoadingService } from '../../services/loading.service';
     /* ── GATEWAY MODAL ── */
     .overlay { position:fixed; inset:0; background:rgba(0,0,0,.75); backdrop-filter:blur(8px); z-index:9000; display:flex; align-items:center; justify-content:center; padding:12px; animation:fadeIn .2s ease; overscroll-behavior: contain; }
     @keyframes fadeIn { from{opacity:0} to{opacity:1} }
-    .gw-modal { background:var(--bg2); border:1px solid var(--border); border-radius:24px; width:calc(100% - 24px); max-width:420px; max-height: 92vh; display: flex; flex-direction: column; overflow:hidden; box-shadow:0 24px 80px rgba(0,0,0,.5); animation:slideUp .25s cubic-bezier(.175,.885,.32,1.275); }
+    .gw-modal { background:var(--bg2); border:1px solid var(--border); border-radius:24px; width:100%; max-width:480px; max-height: 94vh; display: flex; flex-direction: column; overflow:hidden; box-shadow:0 24px 80px rgba(0,0,0,.5); animation:slideUp .25s cubic-bezier(.175,.885,.32,1.275); margin: auto; }
+    @media (max-width: 480px) { .gw-modal { border-radius: 20px 20px 0 0; max-height: 98vh; width: 100%; max-width: none; position: absolute; bottom: 0; } }
     @keyframes slideUp { from{opacity:0;transform:translateY(30px)} to{opacity:1;transform:translateY(0)} }
     .gw-header { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border); }
     .gw-header-left { display:flex; align-items:center; gap:12px; }
@@ -435,8 +437,9 @@ import { LoadingService } from '../../services/loading.service';
     .gw-body { padding:20px; overflow-y: auto; flex: 1; scrollbar-width: thin; }
 
     /* 3D Card */
-    .card-scene { height:170px; perspective:1000px; margin-bottom:20px; }
-    .card-3d { width:100%; height:100%; position:relative; transform-style:preserve-3d; transition:transform .6s cubic-bezier(.4,0,.2,1); }
+    .card-scene { height:180px; perspective:1000px; margin-bottom:20px; display: flex; justify-content: center; align-items: center; }
+    .card-3d { width:280px; height:100%; position:relative; transform-style:preserve-3d; transition:transform .6s cubic-bezier(.4,0,.2,1); }
+    @media (max-width: 360px) { .card-3d { transform: scale(0.9); } }
     .card-3d.flipped { transform:rotateY(180deg); }
     .card-front,.card-back { position:absolute; width:100%; height:100%; border-radius:14px; backface-visibility:hidden; padding:18px 20px; box-shadow:0 8px 28px rgba(0,0,0,.35); }
     .card-front { background:linear-gradient(135deg,#0550ae,#0969da 55%,#388bfd); color:white; display:flex; flex-direction:column; justify-content:space-between; }
@@ -529,16 +532,23 @@ import { LoadingService } from '../../services/loading.service';
     @keyframes spin { to { transform:rotate(360deg); } }
     .spin { animation:spin 1s linear infinite; display:inline-block; }
 
-    @media (max-width:820px) { .wallet-layout { grid-template-columns:1fr; } }
+    @media (max-width:960px) { 
+        .wp { padding: 20px 16px 60px; }
+        .wallet-layout { grid-template-columns: 1fr; } 
+    }
     @media (max-width:480px) { 
       .wp { padding:16px 12px 40px; } 
+      .gw-header { padding: 14px 16px; }
+      .gw-body { padding: 16px; }
       .gw-row2 { grid-template-columns:1fr; } 
-      .pm-badges { flex-wrap: wrap; }
-      .pm-badge { min-width: calc(50% - 4px); flex: unset; }
+      .pm-badges { gap: 6px; }
+      .pm-badge { min-width: 0; flex: 1; padding: 6px 2px; font-size: 0.62rem; }
+      .pm-badge i { font-size: 0.9rem; }
       .gw-tabs { overflow-x: auto; scrollbar-width: none; }
       .gw-tabs::-webkit-scrollbar { display: none; }
-      .gw-tab { min-width: 100px; }
-      .quick-grid { grid-template-columns: repeat(2, 1fr); }
+      .gw-tab { min-width: 80px; padding: 10px 4px; font-size: 0.68rem; }
+      .quick-grid { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+      .qbtn { font-size: 0.75rem; padding: 10px 2px; }
     }
   `]
 })

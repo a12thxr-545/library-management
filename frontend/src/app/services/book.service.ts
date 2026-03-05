@@ -50,4 +50,16 @@ export class BookService {
     getAllBorrows(): Observable<ApiResponse<Borrow[]>> {
         return this.http.get<ApiResponse<Borrow[]>>(`${this.apiUrl}/borrow/all`);
     }
+
+    getReservations(): Observable<ApiResponse<any[]>> {
+        return this.http.get<ApiResponse<any[]>>(`${this.apiUrl}/reservations/my`);
+    }
+
+    reserveBook(bookId: string): Observable<ApiResponse<any>> {
+        return this.http.post<ApiResponse<any>>(`${this.apiUrl}/reservations`, { book_id: bookId });
+    }
+
+    cancelReservation(id: string): Observable<ApiResponse<any>> {
+        return this.http.delete<ApiResponse<any>>(`${this.apiUrl}/reservations/${id}`);
+    }
 }

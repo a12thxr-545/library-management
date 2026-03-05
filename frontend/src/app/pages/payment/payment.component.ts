@@ -275,7 +275,8 @@ interface CardForm {
     .back i { font-size: 1.1rem; }
 
     /* Layout */
-    .layout { display: grid; grid-template-columns: 300px 1fr; gap: 20px; align-items: start; }
+    .layout { display: grid; grid-template-columns: 320px 1fr; gap: 20px; align-items: start; }
+    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
 
     /* Panels */
     .panel {
@@ -340,11 +341,12 @@ interface CardForm {
     }
 
     /* ── CARD SCENE ── */
-    .card-scene { width: 100%; height: 180px; perspective: 1000px; margin-bottom: 24px; }
+    .card-scene { width: 100%; height: 180px; perspective: 1000px; margin-bottom: 24px; display: flex; justify-content: center; }
     .card-3d {
-      width: 100%; height: 100%; position: relative;
+      width: 290px; height: 100%; position: relative;
       transform-style: preserve-3d; transition: transform 0.6s cubic-bezier(.4,0,.2,1);
     }
+    @media (max-width: 360px) { .card-3d { transform: scale(0.9); } }
     .card-3d.is-flipped { transform: rotateY(180deg); }
     .card-face {
       position: absolute; width: 100%; height: 100%; border-radius: 14px;
@@ -494,18 +496,23 @@ interface CardForm {
     .go-btn:hover { background: var(--accent2); text-decoration: none; }
 
     /* Responsive */
-    @media (max-width: 768px) {
+    @media (max-width: 900px) {
       .layout { grid-template-columns: 1fr; }
+      .summary-panel { order: 2; }
+      .payment-panel, .success-panel { order: 1; }
       .qr-wrapper { flex-direction: column; text-align: center; }
     }
     @media (max-width: 480px) {
-      .page { padding: 16px 12px; }
-      .panel { padding: 16px; }
+      .page { padding: 16px 12px 40px; }
+      .panel { padding: 18px; border-radius: 12px; }
       .method-tabs { gap: 6px; }
-      .method-tab { padding: 8px 4px; }
-      .method-tab span { font-size: 0.68rem; }
+      .method-tab { padding: 8px 4px; border-radius: 8px; }
+      .method-tab i { font-size: 1.1rem; }
+      .method-tab span { font-size: 0.65rem; }
       .form-row { grid-template-columns: 1fr; }
-      .card-number-display { font-size: 0.9rem; letter-spacing: 2px; }
+      .card-number-display { font-size: 0.95rem; letter-spacing: 2px; }
+      .qr-box { width: 100px; height: 100px; }
+      .qr-box i { font-size: 80px; }
     }
   `]
 })

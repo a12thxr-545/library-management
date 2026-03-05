@@ -41,10 +41,28 @@ import { Subscription } from 'rxjs';
               </button>
             </div>
 
-            <button class="btn danger" (click)="doReturn()" *ngIf="activeBorrow && isLoggedIn" [disabled]="busy">
-              {{ busy ? '...' : ('common.return' | t) }}
-            </button>
-            <div class="unavail" *ngIf="!activeBorrow && book!.available_copies === 0 && isLoggedIn">{{ 'book.unavailable' | t }}</div>
+            <div class="borrow-form" *ngIf="!activeBorrow && !activeReservation && book!.available_copies === 0 && isLoggedIn">
+              <button class="btn warning" (click)="onReserve()" [disabled]="busy">
+                <i class="material-icons" style="font-size:1rem; vertical-align:middle">event_available</i>
+                {{ busy ? '...' : ('reserve.btn' | t) }}
+              </button>
+            </div>
+
+            <div class="borrow-info" *ngIf="activeReservation">
+              <div class="bi-row">
+                <span style="font-weight:700; color:var(--accent)">
+                  <i class="material-icons" style="font-size:1rem; vertical-align:middle">bookmark</i>
+                  {{ 'common.reserved' | t }} ({{ ('common.' + activeReservation.status) | t }})
+                </span>
+              </div>
+              <div class="bi-row" *ngIf="activeReservation.status === 'active'">
+                <span>{{ 'reserve.expires' | t }}</span>
+                <span>{{ fmt(activeReservation.expires_at) }}</span>
+              </div>
+              <button class="btn danger" style="margin-top:8px" (click)="onCancelReservation()" [disabled]="busy">
+                {{ busy ? '...' : ('reserve.cancel' | t) }}
+              </button>
+            </div>
 
             <div class="borrow-info" *ngIf="activeBorrow">
               <div class="bi-row"><span>{{ 'book.borrowed' | t }}</span><span>{{ fmt(activeBorrow.borrowed_at) }}</span></div>
@@ -56,6 +74,12 @@ import { Subscription } from 'rxjs';
             </div>
             <div class="msg success" *ngIf="msg === 'return'">
                <i class="material-icons" style="font-size:1rem; vertical-align:middle">check_circle</i> {{ 'borrow.return_success' | t }}
+            </div>
+            <div class="msg success" *ngIf="msg === 'reserve'">
+               <i class="material-icons" style="font-size:1rem; vertical-align:middle">check_circle</i> {{ 'reserve.success' | t }}
+            </div>
+            <div class="msg warning" *ngIf="msg === 'queue'">
+               <i class="material-icons" style="font-size:1rem; vertical-align:middle">hourglass_empty</i> {{ 'reserve.queue' | t }}
             </div>
             <div class="msg error" *ngIf="msgErr">
                <i class="material-icons" style="font-size:1rem; vertical-align:middle">error</i> {{ msgErr }}
@@ -130,6 +154,7 @@ import { Subscription } from 'rxjs';
     .btn { padding: 8px 14px; border-radius: var(--radius); font-size: 0.85rem; font-weight: 600; border: none; cursor: pointer; width: 100%; }
     .btn.primary { background: var(--accent); color: white; }
     .btn.primary:hover:not(:disabled) { background: var(--accent2); }
+    .btn.warning { background: var(--warning); color: #000; }
     .btn.danger { background: rgba(248,81,73,0.15); color: var(--danger); border: 1px solid rgba(248,81,73,0.3); }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .unavail { text-align: center; color: var(--text3); font-size: 0.8rem; padding: 4px 0; }
@@ -183,7 +208,7 @@ import { Subscription } from 'rxjs';
 })
 export class BookDetailComponent implements OnInit, OnDestroy {
   book: Book | null = null; notFound = false;
-  activeBorrow: Borrow | null = null; busy = false;
+  activeBorrow: Borrow | null = null; activeReservation: any | null = null; busy = false;
   msg = ''; msgErr = '';
   fallback = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300"><rect width="200" height="300" fill="%2330363d"/><text x="100" y="150" font-family="sans-serif" font-size="40" fill="%238b949e" text-anchor="middle" dy=".3em">📚</text></svg>';
   private sub: Subscription | null = null;
@@ -234,6 +259,9 @@ export class BookDetailComponent implements OnInit, OnDestroy {
       this.bookService.myBorrows().subscribe(r => {
         if (r.data) this.activeBorrow = r.data.find(b => b.book_id === id && b.status === 'active') || null;
       });
+      this.bookService.getReservations().subscribe(r => {
+        if (r.data) this.activeReservation = r.data.find((res: any) => res.book_id === id && (res.status === 'active' || res.status === 'waiting')) || null;
+      });
     }
   }
 
@@ -275,6 +303,44 @@ export class BookDetailComponent implements OnInit, OnDestroy {
         this.busy = false;
         setTimeout(() => this.msgErr = '', 5000);
       }
+    });
+  }
+
+  onReserve() {
+    if (!this.book) return;
+    this.busy = true;
+    this.msgErr = '';
+    this.bookService.reserveBook(this.book.id).subscribe({
+      next: (r) => {
+        this.busy = false;
+        if (r.success) {
+          this.msg = r.data?.status === 'waiting' ? 'queue' : 'reserve';
+          this.fetchData();
+        } else {
+          this.msgErr = r.message || 'Error reserving book';
+        }
+        setTimeout(() => { this.msg = ''; this.msgErr = ''; }, 5000);
+      },
+      error: (e) => {
+        this.busy = false;
+        this.msgErr = e.error?.message || 'Connection error';
+        setTimeout(() => this.msgErr = '', 5000);
+      }
+    });
+  }
+
+  onCancelReservation() {
+    if (!this.activeReservation) return;
+    this.busy = true;
+    this.bookService.cancelReservation(this.activeReservation.id).subscribe({
+      next: (r) => {
+        this.busy = false;
+        if (r.success) {
+          this.activeReservation = null;
+          this.fetchData();
+        }
+      },
+      error: () => { this.busy = false; }
     });
   }
 

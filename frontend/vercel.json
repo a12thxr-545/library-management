@@ -1,0 +1,11 @@
+{
+    "version": 2,
+    "public": true,
+    "name": "library-frontend",
+    "rewrites": [
+        {
+            "source": "/(.*)",
+            "destination": "/index.html"
+        }
+    ]
+}

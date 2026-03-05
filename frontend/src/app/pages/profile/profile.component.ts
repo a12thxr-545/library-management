@@ -83,10 +83,11 @@ import { Subscription } from 'rxjs';
             <button class="tab" [class.active]="tab === 'all'" (click)="tab = 'all'">{{ 'common.all' | t }} ({{ total }})</button>
             <button class="tab" [class.active]="tab === 'active'" (click)="tab = 'active'">{{ 'common.active' | t }} ({{ active }})</button>
             <button class="tab" [class.active]="tab === 'returned'" (click)="tab = 'returned'">{{ 'common.returned' | t }} ({{ returned }})</button>
+            <button class="tab" [class.active]="tab === 'reservations'" (click)="tab = 'reservations'">{{ 'nav.reservations' | t }} ({{ reservations.length }})</button>
             <button class="tab" [class.active]="tab === 'debt'" (click)="tab = 'debt'" *ngIf="unpaidBorrows.length > 0">{{ 'profile.debt' | t }} ({{ unpaidBorrows.length }})</button>
           </div>
 
-          <div class="borrow-list">
+          <div class="borrow-list" *ngIf="tab !== 'reservations'">
             <ng-container *ngIf="!(loadingService.loading$ | async); else historySkeleton">
               <a [routerLink]="['/books', b.book_id]" class="borrow-row clickable" *ngFor="let b of filtered">
                 <img [src]="b.book_cover || fallback" [alt]="b.book_title" (error)="imgErr($event)" />
@@ -118,6 +119,26 @@ import { Subscription } from 'rxjs';
                 <div class="skeleton" style="height: 20px; width: 60px; border-radius: 4px;"></div>
               </div>
             </ng-template>
+          </div>
+
+          <!-- Reservations List -->
+          <div class="borrow-list" *ngIf="tab === 'reservations'">
+            <div class="borrow-row" *ngFor="let r of reservations">
+              <img [src]="r.book_cover || fallback" [alt]="r.book_title" (error)="imgErr($event)" />
+              <div class="bi">
+                <div class="bi-title">{{ r.book_title }}</div>
+                <div class="bi-dates">
+                  <span>{{ 'common.status' | t }}: <span [style.color]="r.status === 'active' ? 'var(--success)' : 'var(--warning)'">{{ ('common.' + r.status) | t }}</span></span>
+                  <span *ngIf="r.status === 'active'">{{ 'reserve.expires' | t }}: {{ fmt(r.expires_at) }}</span>
+                </div>
+              </div>
+              <button class="cancel-btn" (click)="cancelRes(r.id)">
+                <i class="material-icons">close</i>
+              </button>
+            </div>
+            <div class="empty" *ngIf="reservations.length === 0">
+              <span>{{ 'common.no_records' | t }}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -206,10 +227,11 @@ import { Subscription } from 'rxjs';
     .fine-badge { font-weight: 600; padding: 1px 6px; border-radius: 4px; background: rgba(248,81,73,0.1); color: var(--danger); font-size: 0.7rem; border: 1px solid rgba(248,81,73,0.2); }
     .fine-badge.paid { background: rgba(63,185,80,0.1); color: var(--success); border-color: rgba(63,185,80,0.2); }
     
-    .status { font-size: 0.72rem; padding: 2px 8px; border-radius: 4px; flex-shrink: 0; white-space: nowrap; }
-    .status.active { background: rgba(99,102,241,0.15); color: var(--accent); }
     .status.returned { background: rgba(63,185,80,0.15); color: var(--success); }
     .status.overdue { background: rgba(248,81,73,0.15); color: var(--danger); }
+    .cancel-btn { background: none; border: none; color: var(--text3); cursor: pointer; padding: 4px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+    .cancel-btn:hover { background: rgba(248,81,73,0.1); color: var(--danger); }
+    .cancel-btn i { font-size: 1.2rem; }
     .empty { padding: 24px; text-align: center; color: var(--text3); font-size: 0.85rem; }
     .loading { color: var(--text2); font-size: 0.875rem; padding: 16px; }
 
@@ -220,7 +242,7 @@ import { Subscription } from 'rxjs';
   `]
 })
 export class ProfileComponent implements OnInit, OnDestroy {
-  user: User | null = null; borrows: Borrow[] = []; loading = true; tab = 'all';
+  user: User | null = null; borrows: Borrow[] = []; reservations: any[] = []; loading = true; tab = 'all';
   walletBalance = 0;
   fallback = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="36" height="50"><rect width="36" height="50" fill="%2330363d"/><text x="18" y="25" font-family="sans-serif" font-size="10" fill="%238b949e" text-anchor="middle" dy=".3em">📚</text></svg>';
   private sub: Subscription | null = null;
@@ -280,9 +302,16 @@ export class ProfileComponent implements OnInit, OnDestroy {
       if (r.data) this.borrows = r.data;
       this.loading = false;
     });
-    // Fetch wallet balance
-    this.walletService.getWallet().subscribe((r: ApiResponse<Wallet>) => {
-      if (r.data) this.walletBalance = r.data.balance;
+    // Fetch reservations
+    this.bookService.getReservations().subscribe(r => {
+      if (r.data) this.reservations = r.data;
+    });
+  }
+
+  cancelRes(id: string) {
+    if (!confirm(this.languageService.lang === 'en' ? 'Cancel this reservation?' : 'ยืนยันการยกเลิกการจองนี้?')) return;
+    this.bookService.cancelReservation(id).subscribe(r => {
+      if (r.success) this.fetchData(false);
     });
   }
 
