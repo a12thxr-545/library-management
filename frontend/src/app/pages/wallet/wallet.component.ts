@@ -21,6 +21,7 @@ import { LoadingService } from '../../services/loading.service';
 <div class="wp">
   <!-- PAYMENT GATEWAY MODAL -->
   <div class="overlay" *ngIf="showGateway" (click)="closeGateway($event)">
+    <div class="overlay-inner">
     <div class="gw-modal" (click)="$event.stopPropagation()">
 
       <!-- Header -->
@@ -191,6 +192,7 @@ import { LoadingService } from '../../services/loading.service';
       </div>
 
     </div>
+  </div>
   </div>
 
   <!-- MAIN PAGE -->
@@ -414,10 +416,11 @@ import { LoadingService } from '../../services/loading.service';
     .loading-s { display:flex; align-items:center; justify-content:center; gap:8px; padding:36px 0; color:var(--text3); font-size:.85rem; }
 
     /* ── GATEWAY MODAL ── */
-    .overlay { position:fixed; inset:0; background:rgba(0,0,0,.75); backdrop-filter:blur(8px); z-index:9000; display:flex; align-items:center; justify-content:center; padding:12px; animation:fadeIn .2s ease; overscroll-behavior: contain; overflow-y: auto; }
+    .overlay { position:fixed; inset:0; background:rgba(0,0,0,.75); backdrop-filter:blur(8px); z-index:9000; overflow-y:auto; -webkit-overflow-scrolling:touch; animation:fadeIn .2s ease; overscroll-behavior:contain; }
+    .overlay-inner { min-height:100%; display:flex; align-items:center; justify-content:center; padding:16px 12px; box-sizing:border-box; }
     @keyframes fadeIn { from{opacity:0} to{opacity:1} }
-    .gw-modal { background:var(--bg2); border:1px solid var(--border); border-radius:24px; width:100%; max-width:480px; max-height: 92vh; display: flex; flex-direction: column; overflow:hidden; box-shadow:0 24px 80px rgba(0,0,0,.5); animation:slideUp .25s cubic-bezier(.175,.885,.32,1.275); margin: auto; flex-shrink: 0; }
-    @media (max-width: 600px) { .gw-modal { border-radius: 20px; max-height: 90vh; margin: auto; } .overlay { padding: 16px 12px; align-items: center; } }
+    .gw-modal { background:var(--bg2); border:1px solid var(--border); border-radius:24px; width:100%; max-width:480px; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 24px 80px rgba(0,0,0,.5); animation:slideUp .25s cubic-bezier(.175,.885,.32,1.275); flex-shrink:0; }
+    @media (max-width:600px) { .gw-modal { border-radius:20px; width:100%; max-width:100%; } .overlay-inner { padding:12px 8px; align-items:center; } }
     @keyframes slideUp { from{opacity:0;transform:translateY(30px)} to{opacity:1;transform:translateY(0)} }
     .gw-header { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border); }
     .gw-header-left { display:flex; align-items:center; gap:12px; }

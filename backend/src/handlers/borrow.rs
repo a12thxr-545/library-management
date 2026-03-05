@@ -45,30 +45,18 @@ pub async fn borrow_book(
     let now_str = now.to_rfc3339();
     let due_str = due_date.to_rfc3339();
 
-    // 1. ตรวจสอบยอดเงินคงเหลือ และค่าปรับค้างชำระ (ห้ามยืมถ้าไม่มีเงินหรือมีหนี้)
-    let wallet_info: Option<(f64, i64)> = sqlx::query_as(
-        "SELECT w.balance, (SELECT COUNT(*) FROM borrows WHERE user_id = $1 AND fine_paid = FALSE AND fine_amount > 0) as pending_fines 
-         FROM wallets w WHERE w.user_id = $1"
+    // 1. ตรวจสอบค่าปรับค้างชำระเท่านั้น (ยืมฟรี ไม่หักค่าธรรมเนียม)
+    let pending_fines: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM borrows WHERE user_id = $1 AND fine_paid = FALSE AND fine_amount > 0",
     )
     .bind(&claims.sub)
-    .fetch_optional(&pool.pool)
+    .fetch_one(&pool.pool)
     .await
-    .unwrap_or(None);
+    .unwrap_or(0);
 
-    if let Some((balance, pending_fines)) = wallet_info {
-        if balance < 50.0 {
-            return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
-                "Insufficient funds (Minimum 50.00 THB required)",
-            ));
-        }
-        if pending_fines > 0 {
-            return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
-                "You have unpaid fines. Please clear them before borrowing.",
-            ));
-        }
-    } else {
+    if pending_fines > 0 {
         return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
-            "Wallet not found. Please check your membership status.",
+            "คุณมีค่าปรับค้างชำระ กรุณาชำระก่อนยืมหนังสือ (You have unpaid fines. Please clear them before borrowing.)",
         ));
     }
 
@@ -80,7 +68,9 @@ pub async fn borrow_book(
             .await
         {
             Ok(v) => v,
-            Err(_) => return HttpResponse::NotFound().json(ApiResponse::<()>::error("Book not found")),
+            Err(_) => {
+                return HttpResponse::NotFound().json(ApiResponse::<()>::error("Book not found"))
+            }
         };
 
     if available <= 0 {
@@ -98,7 +88,9 @@ pub async fn borrow_book(
     .unwrap_or(0);
 
     if already > 0 {
-        return HttpResponse::BadRequest().json(ApiResponse::<()>::error("You are already borrowing this book"));
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+            "You are already borrowing this book",
+        ));
     }
 
     match sqlx::query(
@@ -113,31 +105,8 @@ pub async fn borrow_book(
     .execute(&pool.pool)
     .await {
         Ok(_) => {
-            // หักค่ายืม 25 บาท อัตโนมัติ
-            let borrow_fee = 25.0;
-            let _ = sqlx::query("UPDATE wallets SET balance = balance - $1, updated_at = $2 WHERE user_id = $3")
-                .bind(borrow_fee)
-                .bind(&now_str)
-                .bind(&claims.sub)
-                .execute(&pool.pool)
-                .await;
-            
-            // บันทึก Transaction ค่ายืม
-            let tx_id = Uuid::new_v4().to_string();
-            let book_title: String = sqlx::query_scalar("SELECT title FROM books WHERE id = $1")
-                .bind(&body.book_id)
-                .fetch_one(&pool.pool)
-                .await
-                .unwrap_or_else(|_| "Book".to_string());
-            
-            let _ = sqlx::query("INSERT INTO wallet_transactions (id, user_id, tx_type, amount, description, created_at) VALUES ($1,$2,'borrow_fee',$3,$4,$5)")
-                .bind(&tx_id)
-                .bind(&claims.sub)
-                .bind(borrow_fee)
-                .bind(format!("Borrow Fee — {}", book_title))
-                .bind(&now_str)
-                .execute(&pool.pool)
-                .await;
+            // ยืมฟรี ไม่หักค่าธรรมเนียม
+            // ค่าปรับจะคำนวณอัตโนมัติเมื่อคืนหนังสือเกินกำหนด
         },
         Err(_) => return HttpResponse::InternalServerError().json(ApiResponse::<()>::error("Error recording borrow")),
     }
@@ -343,7 +312,11 @@ pub async fn return_book(
                 }),
             );
             if fine > 0.0 {
-                hub.notify_user(&borrower_id, "WALLET_UPDATED", serde_json::json!({ "type": "fine_deduction", "amount": fine }));
+                hub.notify_user(
+                    &borrower_id,
+                    "WALLET_UPDATED",
+                    serde_json::json!({ "type": "fine_deduction", "amount": fine }),
+                );
             }
             hub.broadcast(
                 "BOOK_STOCK_UPDATED",
@@ -367,7 +340,9 @@ pub async fn return_book(
                 }
             })))
         }
-        Err(_) => HttpResponse::NotFound().json(ApiResponse::<()>::error("Borrow record not found")),
+        Err(_) => {
+            HttpResponse::NotFound().json(ApiResponse::<()>::error("Borrow record not found"))
+        }
     }
 }
 
