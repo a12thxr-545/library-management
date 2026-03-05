@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: library-backend
+    env: rust
+    buildCommand: cargo build --release
+    startCommand: ./target/release/library-backend
+    envVars:
+      - key: DATABASE_URL
+        sync: false # คุณต้องไปใส่ค่านี้ในหน้าเว็บ Render
+      - key: JWT_SECRET
+        value: library_secret_key_2024_very_secure
+      - key: SERVER_HOST
+        value: 0.0.0.0
+    rootDir: backend
