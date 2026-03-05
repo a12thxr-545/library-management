@@ -23,6 +23,8 @@ uuid = { version = "=1.10.0", features = ["v4"] }
 rand = "=0.8.5"
 rand_core = "=0.6.4"
 tempfile = "=3.10.1"
+ahash = "=0.8.11"
+hashbrown = "=0.14.3"
 chrono = { version = "0.4.38", features = ["serde"] }
 tokio = { version = "1.38.0", features = ["full"] }
 env_logger = "0.11"
@@ -30,4 +32,5 @@ log = "0.4"
 dotenv = "0.15"
 actix-ws = "=0.3.0"
 tokio-stream = "0.1.18"
+jobserver = "=0.1.32"
 futures-util = "0.3.32"
