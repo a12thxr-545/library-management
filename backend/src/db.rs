@@ -8,6 +8,7 @@ pub struct DbPool {
 
 pub async fn init_db() -> Result<DbPool, sqlx::Error> {
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    log::info!("Attempting to connect to database...");
 
     let pool = sqlx::postgres::PgPoolOptions::new()
         .max_connections(5)
