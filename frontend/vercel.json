@@ -3,7 +3,7 @@
     "rewrites": [
         {
             "source": "/api/(.*)",
-            "destination": "https://ใส่-ชื่อ-แอป-ของคุณ-ที่นี่.up.railway.app/api/$1"
+            "destination": "library-management-production-3997.up.railway.app"
         },
         {
             "source": "/(.*)",
