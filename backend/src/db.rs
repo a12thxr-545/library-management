@@ -10,6 +10,8 @@ pub async fn init_db() -> Result<DbPool, sqlx::Error> {
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     let pool = PgPool::connect(&database_url).await?;
 
+    log::info!("Checking and updating database schema...");
+
     // Create tables following SRS schema (PostgreSQL syntax)
     sqlx::query(
         "
@@ -24,13 +26,42 @@ pub async fn init_db() -> Result<DbPool, sqlx::Error> {
             role TEXT NOT NULL DEFAULT 'student',
             avatar_url TEXT,
             created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            CONSTRAINT role_check CHECK (role IN ('student', 'professor', 'librarian'))
+            updated_at TEXT NOT NULL
         );
     ",
     )
     .execute(&pool)
     .await?;
+
+    // Migration logic for role_check constraint
+    // We attempt to drop standard and potential auto-named constraints
+    let drop_queries = vec![
+        "ALTER TABLE users DROP CONSTRAINT IF EXISTS role_check",
+        "ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check", // Common Postgres default name
+    ];
+
+    for q in drop_queries {
+        match sqlx::query(q).execute(&pool).await {
+            Ok(_) => log::info!("Migration: Executed '{}'", q),
+            Err(e) => log::warn!(
+                "Migration: Query '{}' failed (this may be normal): {}",
+                q,
+                e
+            ),
+        }
+    }
+
+    // Add back the new constraint with 'addmin'
+    match sqlx::query("ALTER TABLE users ADD CONSTRAINT role_check CHECK (role IN ('student', 'professor', 'librarian', 'addmin'))").execute(&pool).await {
+        Ok(_) => log::info!("Migration: Successfully added updated role_check constraint with 'addmin'"),
+        Err(e) => {
+            if e.to_string().contains("already exists") {
+                log::info!("Migration: role_check constraint already updated.");
+            } else {
+                log::error!("Migration: Critical failure adding role_check: {}", e);
+            }
+        }
+    }
 
     sqlx::query(
         "

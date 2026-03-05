@@ -26,7 +26,7 @@ pub async fn borrow_book(
                 let dt = d.with_timezone(&chrono::Utc);
                 if dt <= now {
                     return HttpResponse::BadRequest()
-                        .json(ApiResponse::<()>::error("กำหนดคืนต้องเป็นอนาคต"));
+                        .json(ApiResponse::<()>::error("Due date must be in the future"));
                 }
                 // Cap at max days allowed for role
                 if dt > max_due {
@@ -45,6 +45,33 @@ pub async fn borrow_book(
     let now_str = now.to_rfc3339();
     let due_str = due_date.to_rfc3339();
 
+    // 1. ตรวจสอบยอดเงินคงเหลือ และค่าปรับค้างชำระ (ห้ามยืมถ้าไม่มีเงินหรือมีหนี้)
+    let wallet_info: Option<(f64, i64)> = sqlx::query_as(
+        "SELECT w.balance, (SELECT COUNT(*) FROM borrows WHERE user_id = $1 AND fine_paid = FALSE AND fine_amount > 0) as pending_fines 
+         FROM wallets w WHERE w.user_id = $1"
+    )
+    .bind(&claims.sub)
+    .fetch_optional(&pool.pool)
+    .await
+    .unwrap_or(None);
+
+    if let Some((balance, pending_fines)) = wallet_info {
+        if balance < 50.0 {
+            return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+                "Insufficient funds (Minimum 50.00 THB required)",
+            ));
+        }
+        if pending_fines > 0 {
+            return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+                "You have unpaid fines. Please clear them before borrowing.",
+            ));
+        }
+    } else {
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+            "Wallet not found. Please check your membership status.",
+        ));
+    }
+
     // ตรวจสอบว่าหนังสือมีอยู่และว่างหรือไม่
     let available: i32 =
         match sqlx::query_scalar::<_, i32>("SELECT available_copies FROM books WHERE id = $1")
@@ -53,11 +80,11 @@ pub async fn borrow_book(
             .await
         {
             Ok(v) => v,
-            Err(_) => return HttpResponse::NotFound().json(ApiResponse::<()>::error("ไม่พบหนังสือ")),
+            Err(_) => return HttpResponse::NotFound().json(ApiResponse::<()>::error("Book not found")),
         };
 
     if available <= 0 {
-        return HttpResponse::BadRequest().json(ApiResponse::<()>::error("หนังสือไม่ว่าง"));
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error("Book unavailable"));
     }
 
     // ตรวจสอบว่ายืมซ้ำหรือไม่
@@ -71,10 +98,9 @@ pub async fn borrow_book(
     .unwrap_or(0);
 
     if already > 0 {
-        return HttpResponse::BadRequest().json(ApiResponse::<()>::error("คุณกำลังยืมหนังสือเล่มนี้อยู่"));
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error("You are already borrowing this book"));
     }
 
-    // บันทึกการยืม
     match sqlx::query(
         "INSERT INTO borrows (id, user_id, book_id, reservation_id, borrowed_at, due_date, fine_amount, fine_paid, status) VALUES ($1,$2,$3,$4,$5,$6,0.0,FALSE,'active')",
     )
@@ -86,8 +112,34 @@ pub async fn borrow_book(
     .bind(&due_str)
     .execute(&pool.pool)
     .await {
-        Ok(_) => (),
-        Err(_) => return HttpResponse::InternalServerError().json(ApiResponse::<()>::error("เกิดข้อผิดพลาด")),
+        Ok(_) => {
+            // หักค่ายืม 25 บาท อัตโนมัติ
+            let borrow_fee = 25.0;
+            let _ = sqlx::query("UPDATE wallets SET balance = balance - $1, updated_at = $2 WHERE user_id = $3")
+                .bind(borrow_fee)
+                .bind(&now_str)
+                .bind(&claims.sub)
+                .execute(&pool.pool)
+                .await;
+            
+            // บันทึก Transaction ค่ายืม
+            let tx_id = Uuid::new_v4().to_string();
+            let book_title: String = sqlx::query_scalar("SELECT title FROM books WHERE id = $1")
+                .bind(&body.book_id)
+                .fetch_one(&pool.pool)
+                .await
+                .unwrap_or_else(|_| "Book".to_string());
+            
+            let _ = sqlx::query("INSERT INTO wallet_transactions (id, user_id, tx_type, amount, description, created_at) VALUES ($1,$2,'borrow_fee',$3,$4,$5)")
+                .bind(&tx_id)
+                .bind(&claims.sub)
+                .bind(borrow_fee)
+                .bind(format!("Borrow Fee — {}", book_title))
+                .bind(&now_str)
+                .execute(&pool.pool)
+                .await;
+        },
+        Err(_) => return HttpResponse::InternalServerError().json(ApiResponse::<()>::error("Error recording borrow")),
     }
 
     // ลด available_copies
@@ -110,12 +162,12 @@ pub async fn borrow_book(
     let actual_days = (due_date - now).num_days();
 
     // Realtime Notifications
-    hub.notify_user(
-        &claims.sub,
-        "LOAN_UPDATED",
+    hub.broadcast(
+        "BORROW_CREATED",
         serde_json::json!({
             "type": "borrow",
-            "book_id": body.book_id
+            "book_id": body.book_id,
+            "user_id": claims.sub
         }),
     );
     hub.broadcast(
@@ -129,7 +181,7 @@ pub async fn borrow_book(
         "borrow_id": borrow_id,
         "due_date": due_str,
         "loan_days": actual_days,
-        "message": format!("ยืมหนังสือสำเร็จ กำหนดคืนใน {} วัน", actual_days)
+        "message": format!("Borrowed successfully. Due in {} days", actual_days)
     })))
 }
 
@@ -149,30 +201,92 @@ pub async fn return_book(
     let now = chrono::Utc::now();
     let now_str = now.to_rfc3339();
 
-    // ดึงข้อมูลการยืม
-    let result = sqlx::query_as::<_, (String, String)>(
-        "SELECT book_id, due_date FROM borrows WHERE id = $1 AND user_id = $2 AND status IN ('active','overdue')",
-    )
-    .bind(&borrow_id)
-    .bind(&claims.sub)
-    .fetch_one(&pool.pool)
-    .await;
+    // ดึงข้อมูลการยืม — บรรณารักษ์/แอดมินคืนให้ใครก็ได้
+    let sql = if claims.role == "librarian" || claims.role == "addmin" {
+        "SELECT b.book_id, b.due_date, u.role, b.user_id FROM borrows b JOIN users u ON b.user_id = u.id WHERE b.id = $1 AND b.status IN ('active','overdue')"
+    } else {
+        "SELECT b.book_id, b.due_date, u.role, b.user_id FROM borrows b JOIN users u ON b.user_id = u.id WHERE b.id = $1 AND b.user_id = $2 AND b.status IN ('active','overdue')"
+    };
+
+    let result = if claims.role == "librarian" || claims.role == "addmin" {
+        sqlx::query_as::<_, (String, String, String, String)>(sql)
+            .bind(&borrow_id)
+            .fetch_one(&pool.pool)
+            .await
+    } else {
+        sqlx::query_as::<_, (String, String, String, String)>(sql)
+            .bind(&borrow_id)
+            .bind(&claims.sub)
+            .fetch_one(&pool.pool)
+            .await
+    };
 
     match result {
-        Ok((book_id, due_date_str)) => {
-            // คำนวณค่าปรับ (FR-003)
+        Ok((book_id, due_date_str, borrower_role, borrower_id)) => {
+            // คำนวณค่าปรับ (FR-003) — ใช้ role ของคนยืมจริง
             let due = chrono::DateTime::parse_from_rfc3339(&due_date_str)
                 .map(|d| d.with_timezone(&chrono::Utc))
                 .unwrap_or(now);
             let days_overdue = (now - due).num_days().max(0);
-            let fine = days_overdue as f64 * fine_rate_per_day(&claims.role);
+            let fine = days_overdue as f64 * fine_rate_per_day(&borrower_role);
 
-            // อัพเดทสถานะ
+            let mut fine_paid = false;
+            let mut remaining_fine = fine;
+
+            if fine > 0.0 {
+                // พยายามหักเงินจาก Wallet ของผู้ยืม (หักเท่าที่มี)
+                let balance: f64 =
+                    sqlx::query_scalar("SELECT balance FROM wallets WHERE user_id = $1")
+                        .bind(&borrower_id)
+                        .fetch_one(&pool.pool)
+                        .await
+                        .unwrap_or(0.0);
+
+                if balance > 0.0 {
+                    let deduct_amount = if balance >= fine { fine } else { balance };
+
+                    // หักเงิน
+                    let _ = sqlx::query(
+                        "UPDATE wallets SET balance = balance - $1, updated_at = $2 WHERE user_id = $3",
+                    )
+                    .bind(deduct_amount)
+                    .bind(&now_str)
+                    .bind(&borrower_id)
+                    .execute(&pool.pool)
+                    .await;
+
+                    // บันทึก transaction
+                    let tx_id = Uuid::new_v4().to_string();
+                    let book_title: String =
+                        sqlx::query_scalar("SELECT title FROM books WHERE id = $1")
+                            .bind(&book_id)
+                            .fetch_one(&pool.pool)
+                            .await
+                            .unwrap_or_else(|_| "Book".to_string());
+
+                    let _ = sqlx::query("INSERT INTO wallet_transactions (id, user_id, tx_type, amount, description, created_at) VALUES ($1,$2,'fine_payment',$3,$4,$5)")
+                        .bind(&tx_id)
+                        .bind(&borrower_id)
+                        .bind(deduct_amount)
+                        .bind(format!("Fine Deduction — {} (Remaining: ฿{:.2})", book_title, fine - deduct_amount))
+                        .bind(&now_str)
+                        .execute(&pool.pool)
+                        .await;
+
+                    remaining_fine = fine - deduct_amount;
+                    if remaining_fine <= 0.01 {
+                        fine_paid = true;
+                    }
+                }
+            }
+
+            // อัพเดทสถานะการยืม
             let _ = sqlx::query(
-                "UPDATE borrows SET status = 'returned', returned_at = $1, fine_amount = $2 WHERE id = $3",
+                "UPDATE borrows SET status = 'returned', returned_at = $1, fine_amount = $2, fine_paid = $3 WHERE id = $4",
             )
             .bind(&now_str)
-            .bind(fine)
+            .bind(remaining_fine)
+            .bind(fine_paid)
             .bind(&borrow_id)
             .execute(&pool.pool)
             .await;
@@ -220,14 +334,17 @@ pub async fn return_book(
             }
 
             // Realtime Notifications
-            hub.notify_user(
-                &claims.sub,
-                "LOAN_UPDATED",
+            hub.broadcast(
+                "BORROW_RETURNED",
                 serde_json::json!({
                     "type": "return",
-                    "book_id": book_id
+                    "book_id": book_id,
+                    "user_id": borrower_id
                 }),
             );
+            if fine > 0.0 {
+                hub.notify_user(&borrower_id, "WALLET_UPDATED", serde_json::json!({ "type": "fine_deduction", "amount": fine }));
+            }
             hub.broadcast(
                 "BOOK_STOCK_UPDATED",
                 serde_json::json!({
@@ -240,13 +357,17 @@ pub async fn return_book(
                 "days_overdue": days_overdue,
                 "fine_amount": fine,
                 "message": if fine > 0.0 {
-                    format!("คืนหนังสือสำเร็จ มีค่าปรับ {:.2} บาท", fine)
+                    if fine_paid {
+                        format!("Returned successfully. Fine of {:.2} THB automatically deducted.", fine)
+                    } else {
+                        format!("Returned successfully. Outstanding fine: {:.2} THB (Please top up to settle debt).", fine)
+                    }
                 } else {
-                    "คืนหนังสือสำเร็จ ไม่มีค่าปรับ".to_string()
+                    "Returned successfully. No fine.".to_string()
                 }
             })))
         }
-        Err(_) => HttpResponse::NotFound().json(ApiResponse::<()>::error("ไม่พบรายการยืม")),
+        Err(_) => HttpResponse::NotFound().json(ApiResponse::<()>::error("Borrow record not found")),
     }
 }
 
@@ -289,9 +410,8 @@ pub async fn list_all_borrows(pool: web::Data<DbPool>, req: HttpRequest) -> Http
         Err(_) => return HttpResponse::Forbidden().json(ApiResponse::<()>::error("Forbidden")),
     };
 
-    if db_role != "librarian" {
-        return HttpResponse::Forbidden()
-            .json(ApiResponse::<()>::error("Forbidden: Librarian only"));
+    if db_role != "librarian" && db_role != "addmin" {
+        return HttpResponse::Forbidden().json(ApiResponse::<()>::error("Forbidden: Staff only"));
     }
 
     match sqlx::query_as::<_, Borrow>(

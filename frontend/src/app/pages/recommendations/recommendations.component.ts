@@ -5,10 +5,11 @@ import { InterestService } from '../../services/interest.service';
 import { Book } from '../../models';
 
 @Component({
-    selector: 'app-recommendations',
-    standalone: true,
-    imports: [CommonModule, RouterLink],
-    template: `
+  selector: 'app-recommendations',
+  standalone: true,
+  imports: [CommonModule, RouterLink],
+  providers: [],
+  template: `
     <div class="page">
       <div class="header">
         <div class="title-area">
@@ -20,9 +21,14 @@ import { Book } from '../../models';
         </button>
       </div>
 
-      <div class="loading" *ngIf="loading">
-        <div class="spinner"></div>
-        <p>Finding the perfect books for you...</p>
+      <div class="book-grid" *ngIf="loading">
+        <div class="book-card" *ngFor="let s of [1,2,3,4,5,6,7,8]">
+          <div class="skeleton" style="aspect-ratio: 2/3; width: 100%;"></div>
+          <div class="info-wrap">
+            <div class="skeleton" style="height: 18px; width: 80%; margin-bottom: 8px;"></div>
+            <div class="skeleton" style="height: 14px; width: 50%;"></div>
+          </div>
+        </div>
       </div>
 
       <div class="book-grid" *ngIf="!loading && books.length > 0">
@@ -55,7 +61,7 @@ import { Book } from '../../models';
       </div>
     </div>
   `,
-    styles: [`
+  styles: [`
     .page { max-width: 1200px; margin: 0 auto; padding: 60px 24px; min-height: 80vh; }
     
     .header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 48px; border-bottom: 1px solid var(--border); padding-bottom: 24px; }
@@ -104,9 +110,9 @@ import { Book } from '../../models';
   `]
 })
 export class RecommendationsComponent implements OnInit {
-    books: Book[] = [];
-    loading = true;
-    fallback = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300" viewBox="0 0 200 300">
+  books: Book[] = [];
+  loading = true;
+  fallback = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300" viewBox="0 0 200 300">
     <rect width="200" height="300" fill="%231a1b26"/>
     <path d="M40 0h140a20 20 0 0 1 20 20v260a20 20 0 0 1-20 20H40a20 20 0 0 1-20-20V20A20 20 0 0 1 40 0z" fill="%2324283b"/>
     <rect x="40" y="40" width="120" height="10" rx="5" fill="%23414868" opacity="0.5"/>
@@ -114,17 +120,17 @@ export class RecommendationsComponent implements OnInit {
     <path d="M20 20v260c0 11 9 20 20 20h10V20c0-11-9-20-20-20z" fill="%2316161e"/>
   </svg>`;
 
-    constructor(private interestService: InterestService) { }
+  constructor(private interestService: InterestService) { }
 
-    ngOnInit() {
-        this.interestService.getRecommendations().subscribe({
-            next: (r) => {
-                this.books = r.data || [];
-                this.loading = false;
-            },
-            error: () => this.loading = false
-        });
-    }
+  ngOnInit() {
+    this.interestService.getRecommendations().subscribe({
+      next: (r) => {
+        this.books = r.data || [];
+        this.loading = false;
+      },
+      error: () => this.loading = false
+    });
+  }
 
-    imgErr(e: any) { e.target.src = this.fallback; }
+  imgErr(e: any) { e.target.src = this.fallback; }
 }

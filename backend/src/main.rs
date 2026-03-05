@@ -9,7 +9,6 @@ mod realtime;
 use actix_cors::Cors;
 use actix_web::{middleware::Logger, web, App, HttpServer};
 use env_logger::Env;
-use std::sync::Arc;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -50,6 +49,14 @@ async fn main() -> std::io::Result<()> {
             .route(
                 "/api/admin/users",
                 web::get().to(handlers::auth::list_users),
+            )
+            .route(
+                "/api/admin/users/{id}/role",
+                web::put().to(handlers::auth::update_user_role),
+            )
+            .route(
+                "/api/admin/notifications",
+                web::post().to(handlers::auth::send_notification),
             )
             // Book routes
             .route("/api/books", web::get().to(handlers::books::get_books))

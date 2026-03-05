@@ -29,6 +29,7 @@ pub struct UserProfile {
     pub address: Option<String>,
     pub role: String,
     pub avatar_url: Option<String>,
+    pub balance: f64,
     pub created_at: String,
 }
 
@@ -47,6 +48,18 @@ pub struct RegisterRequest {
 pub struct LoginRequest {
     pub username: String,
     pub password: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateRoleRequest {
+    pub role: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct NotificationRequest {
+    pub user_id: String,
+    pub message: String,
+    pub is_key: bool,
 }
 
 #[derive(Debug, Serialize)]

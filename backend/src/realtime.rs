@@ -69,8 +69,11 @@ pub async fn ws_handler(
                         Message::Ping(bytes) => {
                             if session.pong(&bytes).await.is_err() { break; }
                         }
-                        Message::Text(_) => {
-                            // We don't really expect messages from client for now
+                        Message::Text(text) => {
+                            // Relay messages from client to other users via Hub
+                            if let Ok(msg) = serde_json::from_str::<RealtimeMessage>(&text) {
+                                hub.send(msg);
+                            }
                         }
                         Message::Close(reason) => {
                             let _ = session.close(reason).await;

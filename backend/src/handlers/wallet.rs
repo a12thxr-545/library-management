@@ -26,17 +26,91 @@ pub async fn get_wallet(pool: web::Data<DbPool>, req: HttpRequest) -> HttpRespon
     .execute(&pool.pool)
     .await;
 
-    match sqlx::query_as::<_, Wallet>(
+    let current_wallet = match sqlx::query_as::<_, Wallet>(
         "SELECT id, user_id, balance, updated_at FROM wallets WHERE user_id = $1",
     )
     .bind(&claims.sub)
     .fetch_one(&pool.pool)
     .await
     {
-        Ok(w) => HttpResponse::Ok().json(ApiResponse::success(w)),
-        Err(_) => HttpResponse::InternalServerError()
-            .json(ApiResponse::<()>::error("ไม่สามารถดึงข้อมูล Wallet ได้")),
+        Ok(w) => w,
+        Err(_) => {
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                "Could not fetch wallet information",
+            ))
+        }
+    };
+
+    let mut current_balance = current_wallet.balance;
+
+    if current_balance > 0.0 {
+        // --- AUTO-SWEEP DEBT ---
+        let pending_borrows = sqlx::query_as::<_, (String, f64, String)>(
+            "SELECT br.id, br.fine_amount, b.title 
+             FROM borrows br JOIN books b ON br.book_id = b.id 
+             WHERE br.user_id = $1 AND br.fine_paid = FALSE AND br.fine_amount > 0 
+             ORDER BY br.borrowed_at ASC",
+        )
+        .bind(&claims.sub)
+        .fetch_all(&pool.pool)
+        .await
+        .unwrap_or_default();
+
+        for (borrow_id, fine, title) in pending_borrows {
+            if current_balance <= 0.0 {
+                break;
+            }
+            let pay_amount = if current_balance >= fine {
+                fine
+            } else {
+                current_balance
+            };
+
+            // หักเงินลูกหนี้
+            let _ = sqlx::query(
+                "UPDATE wallets SET balance = balance - $1, updated_at = $2 WHERE user_id = $3",
+            )
+            .bind(pay_amount)
+            .bind(&now)
+            .bind(&claims.sub)
+            .execute(&pool.pool)
+            .await;
+
+            let is_fully_paid = (fine - pay_amount) <= 0.01;
+            let _ = sqlx::query(
+                "UPDATE borrows SET fine_amount = fine_amount - $1, fine_paid = $2 WHERE id = $3",
+            )
+            .bind(pay_amount)
+            .bind(is_fully_paid)
+            .bind(&borrow_id)
+            .execute(&pool.pool)
+            .await;
+
+            // บันทึก Transaction
+            let tx_id = Uuid::new_v4().to_string();
+            let _ = sqlx::query("INSERT INTO wallet_transactions (id, user_id, tx_type, amount, description, created_at) VALUES ($1,$2,'fine_payment',$3,$4,$5)")
+                .bind(&tx_id)
+                .bind(&claims.sub)
+                .bind(pay_amount)
+                .bind(format!("Automatic Debt Settlement — {} (Paid ฿{:.2})", title, pay_amount))
+                .bind(&now)
+                .execute(&pool.pool)
+                .await;
+
+            current_balance -= pay_amount;
+        }
     }
+
+    // ดึงสถานะปัจจุบันมาส่งคืน
+    let final_wallet = sqlx::query_as::<_, Wallet>(
+        "SELECT id, user_id, balance, updated_at FROM wallets WHERE user_id = $1",
+    )
+    .bind(&claims.sub)
+    .fetch_one(&pool.pool)
+    .await
+    .unwrap_or(current_wallet);
+
+    HttpResponse::Ok().json(ApiResponse::success(final_wallet))
 }
 
 /// เติมเงินเข้า Wallet
@@ -56,11 +130,13 @@ pub async fn top_up(
     };
 
     if body.amount <= 0.0 {
-        return HttpResponse::BadRequest().json(ApiResponse::<()>::error("จำนวนเงินต้องมากกว่า 0"));
+        return HttpResponse::BadRequest()
+            .json(ApiResponse::<()>::error("Amount must be greater than 0"));
     }
     if body.amount > 100000.0 {
-        return HttpResponse::BadRequest()
-            .json(ApiResponse::<()>::error("เติมเงินได้สูงสุด 100,000 บาทต่อครั้ง"));
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+            "Maximum top-up amount is 100,000 THB",
+        ));
     }
 
     let now = chrono::Utc::now().to_rfc3339();
@@ -88,7 +164,7 @@ pub async fn top_up(
 
     if updated.is_err() {
         return HttpResponse::InternalServerError()
-            .json(ApiResponse::<()>::error("เกิดข้อผิดพลาดในการเติมเงิน"));
+            .json(ApiResponse::<()>::error("Error processing top-up"));
     }
 
     // บันทึก transaction
@@ -99,33 +175,101 @@ pub async fn top_up(
     .bind(&tx_id)
     .bind(&claims.sub)
     .bind(body.amount)
-    .bind(format!("เติมเงิน ฿{:.2}", body.amount))
+    .bind(format!("Top-up ฿{:.2}", body.amount))
     .bind(&now)
     .execute(&pool.pool)
     .await;
 
     // ดึงยอดใหม่
-    let new_balance: f64 = sqlx::query_scalar("SELECT balance FROM wallets WHERE user_id = $1")
+    let mut current_balance: f64 =
+        sqlx::query_scalar("SELECT balance FROM wallets WHERE user_id = $1")
+            .bind(&claims.sub)
+            .fetch_one(&pool.pool)
+            .await
+            .unwrap_or(0.0);
+
+    // --- AUTO-PAY PENDING FINES (Support Partial) ---
+    let pending_borrows = sqlx::query_as::<_, (String, f64, String)>(
+        "SELECT br.id, br.fine_amount, b.title 
+         FROM borrows br JOIN books b ON br.book_id = b.id 
+         WHERE br.user_id = $1 AND br.fine_paid = FALSE AND br.fine_amount > 0 
+         ORDER BY br.borrowed_at ASC",
+    )
+    .bind(&claims.sub)
+    .fetch_all(&pool.pool)
+    .await
+    .unwrap_or_default();
+
+    for (borrow_id, fine, title) in pending_borrows {
+        if current_balance <= 0.0 {
+            break;
+        }
+
+        let pay_amount = if current_balance >= fine {
+            fine
+        } else {
+            current_balance
+        };
+
+        // หักเงินลูกหนี้
+        let _ = sqlx::query(
+            "UPDATE wallets SET balance = balance - $1, updated_at = $2 WHERE user_id = $3",
+        )
+        .bind(pay_amount)
+        .bind(&now)
         .bind(&claims.sub)
-        .fetch_one(&pool.pool)
-        .await
-        .unwrap_or(0.0);
+        .execute(&pool.pool)
+        .await;
+
+        let is_fully_paid = (fine - pay_amount) <= 0.01;
+        let _ = sqlx::query(
+            "UPDATE borrows SET fine_amount = fine_amount - $1, fine_paid = $2 WHERE id = $3",
+        )
+        .bind(pay_amount)
+        .bind(is_fully_paid)
+        .bind(&borrow_id)
+        .execute(&pool.pool)
+        .await;
+
+        // บันทึก Transaction การชำระหนี้
+        let tx_id_fine = Uuid::new_v4().to_string();
+        let _ = sqlx::query("INSERT INTO wallet_transactions (id, user_id, tx_type, amount, description, created_at) VALUES ($1,$2,'fine_payment',$3,$4,$5)")
+            .bind(&tx_id_fine)
+            .bind(&claims.sub)
+            .bind(pay_amount)
+            .bind(format!("Automated Fine Payment — {} (Paid ฿{:.2})", title, pay_amount))
+            .bind(&now)
+            .execute(&pool.pool)
+            .await;
+
+        current_balance -= pay_amount;
+
+        // Notify that borrow was updated (fine paid)
+        hub.broadcast(
+            "BORROW_UPDATED",
+            serde_json::json!({
+                "type": "fine_payment_auto",
+                "borrow_id": borrow_id,
+                "user_id": claims.sub
+            }),
+        );
+    }
 
     // ส่งแจ้งเตือน Realtime
     hub.notify_user(
         &claims.sub,
         "WALLET_UPDATED",
         serde_json::json!({
-            "balance": new_balance,
+            "balance": current_balance,
             "type": "topup",
             "amount": body.amount
         }),
     );
 
     HttpResponse::Ok().json(ApiResponse::success(serde_json::json!({
-        "balance": new_balance,
+        "balance": current_balance,
         "topped_up": body.amount,
-        "message": format!("เติมเงินสำเร็จ ฿{:.2}", body.amount)
+        "message": format!("Top-up successful ฿{:.2} (All debts settled)", body.amount)
     })))
 }
 
@@ -159,15 +303,18 @@ pub async fn pay_fine(
 
     let (fine_amount, fine_paid, book_title) = match row {
         Some(r) => r,
-        None => return HttpResponse::NotFound().json(ApiResponse::<()>::error("ไม่พบรายการยืม")),
+        None => {
+            return HttpResponse::NotFound()
+                .json(ApiResponse::<()>::error("Borrow record not found"))
+        }
     };
 
     if fine_paid {
-        return HttpResponse::BadRequest().json(ApiResponse::<()>::error("ชำระค่าปรับนี้แล้ว"));
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error("Fine already paid"));
     }
 
     if fine_amount <= 0.0 {
-        return HttpResponse::BadRequest().json(ApiResponse::<()>::error("ไม่มีค่าปรับที่ต้องชำระ"));
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error("No fine amount to pay"));
     }
 
     // ตรวจสอบยอดกระเป๋า
@@ -189,7 +336,7 @@ pub async fn pay_fine(
 
     if balance < fine_amount {
         return HttpResponse::BadRequest().json(ApiResponse::<()>::error(&format!(
-            "ยอดใน Wallet ไม่เพียงพอ (มี ฿{:.2} ต้องการ ฿{:.2})",
+            "Insufficient wallet balance (Available: ฿{:.2}, Required: ฿{:.2})",
             balance, fine_amount
         )));
     }
@@ -210,16 +357,15 @@ pub async fn pay_fine(
         .execute(&pool.pool)
         .await;
 
-    // บันทึก transaction
     let tx_id = Uuid::new_v4().to_string();
-    let title_str = book_title.unwrap_or_else(|| "หนังสือ".to_string());
+    let title_str = book_title.unwrap_or_else(|| "Book".to_string());
     let _ = sqlx::query(
         "INSERT INTO wallet_transactions (id, user_id, tx_type, amount, description, created_at) VALUES ($1,$2,'fine_payment',$3,$4,$5)",
     )
     .bind(&tx_id)
     .bind(&claims.sub)
     .bind(fine_amount)
-    .bind(format!("จ่ายค่าปรับ — {}", title_str))
+    .bind(format!("Fine Payment — {}", title_str))
     .bind(&now)
     .execute(&pool.pool)
     .await;
@@ -240,11 +386,19 @@ pub async fn pay_fine(
             "amount": fine_amount
         }),
     );
+    hub.broadcast(
+        "BORROW_UPDATED",
+        serde_json::json!({
+            "type": "fine_payment",
+            "borrow_id": body.borrow_id,
+            "user_id": claims.sub
+        }),
+    );
 
     HttpResponse::Ok().json(ApiResponse::success(serde_json::json!({
         "paid": fine_amount,
         "new_balance": new_balance,
-        "message": format!("จ่ายค่าปรับ ฿{:.2} สำเร็จ", fine_amount)
+        "message": format!("Fine payment of ฿{:.2} successful", fine_amount)
     })))
 }
 
@@ -264,6 +418,6 @@ pub async fn wallet_transactions(pool: web::Data<DbPool>, req: HttpRequest) -> H
     {
         Ok(txns) => HttpResponse::Ok().json(ApiResponse::success(txns)),
         Err(_) => HttpResponse::InternalServerError()
-            .json(ApiResponse::<()>::error("ไม่สามารถดึงประวัติ Wallet ได้")),
+            .json(ApiResponse::<()>::error("Could not fetch wallet history")),
     }
 }

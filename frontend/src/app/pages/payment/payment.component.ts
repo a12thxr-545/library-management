@@ -4,7 +4,10 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink, Router } from '@angular/router';
 import { BookService } from '../../services/book.service';
 import { AuthService } from '../../services/auth.service';
+import { LanguageService } from '../../services/language.service';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 import { Borrow } from '../../models';
+import { LoadingService } from '../../services/loading.service';
 
 interface CardForm {
   number: string;
@@ -16,11 +19,11 @@ interface CardForm {
 @Component({
   selector: 'app-payment',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink, TranslatePipe],
   template: `
     <div class="page">
       <a routerLink="/profile" class="back">
-        <i class="material-icons">arrow_back</i> Back to Profile
+        <i class="material-icons">arrow_back</i> {{ 'payment.back_profile' | t }}
       </a>
 
       <div class="layout">
@@ -28,30 +31,48 @@ interface CardForm {
         <div class="panel summary-panel">
           <div class="panel-header">
             <i class="material-icons">receipt_long</i>
-            <span>Fine Summary</span>
+            <span>{{ 'payment.summary' | t }}</span>
           </div>
 
-          <div class="fine-list" *ngIf="overdueBorrows.length > 0">
-            <div class="fine-row" *ngFor="let b of overdueBorrows">
-              <div class="fine-book">
-                <div class="fine-title">{{ b.book_title || 'Book' }}</div>
-                <div class="fine-date">Due: <span class="overdue-text">{{ fmt(b.due_date) }}</span></div>
+          <div class="fine-list" *ngIf="!(loadingService.loading$ | async); else summarySkeleton">
+            <div class="fine-list-content" *ngIf="overdueBorrows.length > 0">
+              <div class="fine-row" *ngFor="let b of overdueBorrows">
+                <div class="fine-book">
+                  <div class="fine-title">{{ b.book_title || ('common.no_records' | t) }}</div>
+                  <div class="fine-date">{{ 'book.return_date' | t }}: <span class="overdue-text">{{ fmt(b.due_date) }}</span></div>
+                </div>
+                <div class="fine-amount">฿{{ (b.fine_amount || 0).toFixed(2) }}</div>
               </div>
-              <div class="fine-amount">฿{{ (b.fine_amount || 0).toFixed(2) }}</div>
+              <div class="total-row">
+                <span>{{ 'payment.total_due' | t }}</span>
+                <span class="total-amount">฿{{ totalFine.toFixed(2) }}</span>
+              </div>
             </div>
-            <div class="total-row">
-              <span>Total Due</span>
-              <span class="total-amount">฿{{ totalFine.toFixed(2) }}</span>
+
+            <div class="no-fine-msg" *ngIf="overdueBorrows.length === 0">
+              <div class="check-circle">
+                <i class="material-icons">check</i>
+              </div>
+              <strong>{{ 'payment.no_fines' | t }}</strong>
+              <p>{{ 'payment.no_fines_sub' | t }}</p>
             </div>
           </div>
 
-          <div class="no-fine-msg" *ngIf="overdueBorrows.length === 0">
-            <div class="check-circle">
-              <i class="material-icons">check</i>
+          <ng-template #summarySkeleton>
+            <div class="fine-list">
+              <div class="fine-row" *ngFor="let s of [1,2]">
+                <div class="fine-book">
+                   <div class="skeleton" style="height: 14px; width: 120px; margin-bottom: 6px;"></div>
+                   <div class="skeleton" style="height: 10px; width: 80px;"></div>
+                </div>
+                <div class="skeleton" style="height: 16px; width: 50px;"></div>
+              </div>
+              <div class="total-row">
+                <div class="skeleton" style="height: 14px; width: 60px;"></div>
+                <div class="skeleton" style="height: 20px; width: 80px;"></div>
+              </div>
             </div>
-            <strong>No outstanding fines</strong>
-            <p>You're all clear!</p>
-          </div>
+          </ng-template>
 
           <!-- Info cards -->
           <div class="info-cards">
@@ -61,7 +82,7 @@ interface CardForm {
             </div>
             <div class="info-card">
               <i class="material-icons">verified_user</i>
-              <span>Secured payments</span>
+              <span>{{ 'wallet.gateway.secured' | t }}</span>
             </div>
             <div class="info-card">
               <i class="material-icons">support_agent</i>
@@ -71,27 +92,25 @@ interface CardForm {
         </div>
 
         <!-- Right: Payment Form -->
-        <div class="panel payment-panel" *ngIf="!paymentDone">
+        <div class="panel payment-panel" *ngIf="!paymentDone && !(loadingService.loading$ | async); else paySkeleton">
 
           <!-- Method Tabs -->
           <div class="method-tabs">
             <button class="method-tab" [class.active]="method === 'card'" (click)="method = 'card'">
               <i class="material-icons">credit_card</i>
-              <span>Card</span>
+              <span>{{ 'wallet.gateway.card' | t }}</span>
             </button>
             <button class="method-tab" [class.active]="method === 'promptpay'" (click)="method = 'promptpay'">
               <i class="material-icons">qr_code_2</i>
-              <span>PromptPay</span>
+              <span>{{ 'wallet.gateway.promptpay' | t }}</span>
             </button>
             <button class="method-tab" [class.active]="method === 'bank'" (click)="method = 'bank'">
               <i class="material-icons">account_balance</i>
-              <span>Bank Transfer</span>
+              <span>{{ 'wallet.gateway.transfer' | t }}</span>
             </button>
           </div>
-
           <!-- ═══ CREDIT / DEBIT CARD ═══ -->
           <div *ngIf="method === 'card'" class="card-section">
-
             <!-- Animated Card Preview -->
             <div class="card-scene">
               <div class="card-3d" [class.is-flipped]="showBack">
@@ -106,11 +125,11 @@ interface CardForm {
                   </div>
                   <div class="card-footer">
                     <div class="card-field">
-                      <div class="card-field-label">CARDHOLDER</div>
+                      <div class="card-field-label">{{ 'wallet.gateway.card_holder' | t }}</div>
                       <div class="card-field-value">{{ card.name || 'YOUR NAME' }}</div>
                     </div>
                     <div class="card-field">
-                      <div class="card-field-label">EXPIRES</div>
+                      <div class="card-field-label">{{ 'wallet.gateway.card_expiry' | t }}</div>
                       <div class="card-field-value">{{ card.expiry || 'MM/YY' }}</div>
                     </div>
                   </div>
@@ -129,7 +148,7 @@ interface CardForm {
 
             <!-- Card Form -->
             <div class="form-group">
-              <label>Card Number</label>
+              <label>{{ 'wallet.gateway.card_number' | t }}</label>
               <div class="input-with-icon">
                 <input type="text" [(ngModel)]="card.number"
                   (ngModelChange)="onCardNumberChange($event)"
@@ -138,9 +157,8 @@ interface CardForm {
                 <i class="material-icons">credit_card</i>
               </div>
             </div>
-
             <div class="form-group">
-              <label>Cardholder Name</label>
+              <label>{{ 'wallet.gateway.card_holder' | t }}</label>
               <input type="text" [(ngModel)]="card.name"
                 (focus)="showBack = false"
                 placeholder="Name as shown on card" />
@@ -148,14 +166,14 @@ interface CardForm {
 
             <div class="form-row">
               <div class="form-group">
-                <label>Expiry Date</label>
+                <label>{{ 'wallet.gateway.card_expiry' | t }}</label>
                 <input type="text" [(ngModel)]="card.expiry"
                   (ngModelChange)="onExpiryChange($event)"
                   (focus)="showBack = false"
                   placeholder="MM/YY" maxlength="5" />
               </div>
               <div class="form-group">
-                <label>CVV</label>
+                <label>{{ 'wallet.gateway.card_cvv' | t }}</label>
                 <input type="text" [(ngModel)]="card.cvv"
                   (input)="showBack = true" (blur)="showBack = false"
                   placeholder="123" maxlength="4" />
@@ -171,7 +189,7 @@ interface CardForm {
               </div>
               <div class="qr-info">
                 <div class="qr-amount">฿{{ totalFine > 0 ? totalFine.toFixed(2) : '0.00' }}</div>
-                <div class="qr-sub">Scan with your banking app</div>
+                <div class="qr-sub">{{ 'wallet.gateway.pp_hint' | t }}</div>
                 <div class="promptpay-id">
                   <i class="material-icons" style="font-size:1rem">phone_iphone</i>
                   PromptPay: 081-234-5678
@@ -179,10 +197,10 @@ interface CardForm {
               </div>
             </div>
             <div class="pp-steps">
-              <div class="pp-step"><span>1</span> Open your banking app</div>
-              <div class="pp-step"><span>2</span> Scan the QR code above</div>
-              <div class="pp-step"><span>3</span> Confirm the payment amount</div>
-              <div class="pp-step"><span>4</span> Click "Confirm Payment" below</div>
+              <div class="pp-step"><span>1</span> {{ 'wallet.gateway.pp_step1' | t }}</div>
+              <div class="pp-step"><span>2</span> {{ 'wallet.gateway.pp_step2' | t }}</div>
+              <div class="pp-step"><span>3</span> {{ 'wallet.gateway.pp_step3' | t }}</div>
+              <div class="pp-step"><span>4</span> {{ 'wallet.gateway.pp_step4' | t }}</div>
             </div>
           </div>
 
@@ -191,15 +209,15 @@ interface CardForm {
             <div class="bank-card">
               <div class="bank-logo-row">
                 <div class="bank-badge kbank">KBANK</div>
-                <span>Kasikorn Bank</span>
+                <span>{{ 'wallet.gateway.bank_name' | t }}</span>
               </div>
-              <div class="bank-detail"><span>Account Name</span><strong>LibraryTH Co., Ltd.</strong></div>
-              <div class="bank-detail"><span>Account Number</span><strong class="acc-num">012-3-45678-9</strong></div>
-              <div class="bank-detail"><span>Amount</span><strong class="bank-amount">฿{{ totalFine > 0 ? totalFine.toFixed(2) : '0.00' }}</strong></div>
+              <div class="bank-detail"><span>{{ 'wallet.gateway.acc_name' | t }}</span><strong>LibraryTH Co., Ltd.</strong></div>
+              <div class="bank-detail"><span>{{ 'wallet.gateway.acc_num' | t }}</span><strong class="acc-num">012-3-45678-9</strong></div>
+              <div class="bank-detail"><span>{{ 'wallet.gateway.transfer_amt' | t }}</span><strong class="bank-amount">฿{{ totalFine > 0 ? totalFine.toFixed(2) : '0.00' }}</strong></div>
             </div>
             <div class="bank-note">
               <i class="material-icons">info</i>
-              Transfer the exact amount and send your slip to admin within 24 hours.
+              {{ 'wallet.gateway.bank_hint' | t }}
             </div>
           </div>
 
@@ -210,18 +228,28 @@ interface CardForm {
           <button class="pay-btn" (click)="processPayment()" [disabled]="processing">
             <span *ngIf="!processing">
               <i class="material-icons">lock</i>
-              Pay {{ totalFine > 0 ? '฿' + totalFine.toFixed(2) : 'Now' }}
+              {{ 'wallet.gateway.confirm_btn' | t }} {{ totalFine > 0 ? '฿' + totalFine.toFixed(2) : '' }}
             </span>
             <span *ngIf="processing" class="loading-dots">
-              <i class="material-icons spin">autorenew</i> Processing...
+              <i class="material-icons spin">autorenew</i> {{ 'wallet.gateway.processing' | t }}
             </span>
           </button>
 
           <p class="secure-note">
             <i class="material-icons">verified_user</i>
-            Your payment information is encrypted and secure
+            {{ 'wallet.gateway.secure_info' | t }}
           </p>
         </div>
+
+        <ng-template #paySkeleton>
+          <div class="panel payment-panel" *ngIf="!paymentDone">
+            <div class="skeleton" style="height: 60px; width: 100%; border-radius: 12px; margin-bottom: 24px;"></div>
+            <div class="skeleton" style="height: 180px; width: 100%; border-radius: 14px; margin-bottom: 24px;"></div>
+            <div class="skeleton" style="height: 44px; width: 100%; border-radius: 8px; margin-bottom: 14px;"></div>
+            <div class="skeleton" style="height: 44px; width: 100%; border-radius: 8px; margin-bottom: 14px;"></div>
+            <div class="skeleton" style="height: 50px; width: 100%; border-radius: 10px; margin-top: 16px;"></div>
+          </div>
+        </ng-template>
 
         <!-- Success State -->
         <div class="panel success-panel" *ngIf="paymentDone">
@@ -229,13 +257,13 @@ interface CardForm {
             <div class="success-ring"></div>
             <i class="material-icons success-check">check_circle</i>
           </div>
-          <h2>Payment Successful!</h2>
-          <p class="success-sub">Your fine of <strong>฿{{ paidAmount.toFixed(2) }}</strong> has been paid.</p>
+          <h2>{{ 'wallet.gateway.success_title' | t }}</h2>
+          <p class="success-sub">{{ 'wallet.gateway.success_sub' | t }} <strong>฿{{ paidAmount.toFixed(2) }}</strong></p>
           <div class="success-ref">
-            <span>Reference Number</span>
+            <span>{{ 'wallet.gateway.ref_code' | t }}</span>
             <strong>{{ refNo }}</strong>
           </div>
-          <a routerLink="/profile" class="go-btn">Back to Profile</a>
+          <a routerLink="/profile" class="go-btn">{{ 'payment.back_profile' | t }}</a>
         </div>
       </div>
     </div>
@@ -496,7 +524,9 @@ export class PaymentComponent implements OnInit {
   constructor(
     private bookService: BookService,
     private authService: AuthService,
-    private router: Router
+    private router: Router,
+    public loadingService: LoadingService,
+    private languageService: LanguageService
   ) { }
 
   get overdueBorrows(): Borrow[] {
@@ -545,10 +575,11 @@ export class PaymentComponent implements OnInit {
 
     if (this.method === 'card') {
       const raw = this.card.number.replace(/\s/g, '');
-      if (raw.length < 16) { this.formError = 'Please enter a valid 16-digit card number'; return; }
-      if (!this.card.name.trim()) { this.formError = 'Please enter the cardholder name'; return; }
-      if (this.card.expiry.length < 5) { this.formError = 'Please enter a valid expiry date (MM/YY)'; return; }
-      if (this.card.cvv.length < 3) { this.formError = 'Please enter a valid CVV'; return; }
+      const l = this.languageService.lang;
+      if (raw.length < 16) { this.formError = l === 'en' ? 'Please enter a valid 16-digit card number' : 'กรุณากรอกระบุหมายเลขบัตร 16 หลัก'; return; }
+      if (!this.card.name.trim()) { this.formError = l === 'en' ? 'Please enter the cardholder name' : 'กรุณากรอกชื่อบนบัตร'; return; }
+      if (this.card.expiry.length < 5) { this.formError = l === 'en' ? 'Please enter a valid expiry date (MM/YY)' : 'กรุณากรอกวันหมดอายุบัตร (MM/YY)'; return; }
+      if (this.card.cvv.length < 3) { this.formError = l === 'en' ? 'Please enter a valid CVV' : 'กรุณากรอกรหัส CVV'; return; }
     }
 
     this.processing = true;
@@ -561,6 +592,7 @@ export class PaymentComponent implements OnInit {
   }
 
   fmt(d: string) {
-    return new Date(d).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' });
+    const l = this.languageService.lang;
+    return new Date(d).toLocaleDateString(l === 'th' ? 'th-TH' : 'en-GB', { year: 'numeric', month: 'short', day: 'numeric' });
   }
 }

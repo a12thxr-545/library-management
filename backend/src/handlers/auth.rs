@@ -1,16 +1,16 @@
-use crate::{auth, db::DbPool, models::*};
+use crate::{auth, db::DbPool, models::*, realtime::Hub};
 use actix_web::{web, HttpRequest, HttpResponse};
 use bcrypt::{hash, verify, DEFAULT_COST};
+use std::sync::Arc;
 use uuid::Uuid;
 
 pub async fn register(pool: web::Data<DbPool>, req: web::Json<RegisterRequest>) -> HttpResponse {
     let now = chrono::Utc::now().to_rfc3339();
     let id = Uuid::new_v4().to_string();
 
-    // SRS roles: student | professor | librarian
+    // SRS roles: student | professor | librarian (librarian only via admin)
     let role = match req.role.as_deref() {
         Some("professor") => "professor",
-        Some("librarian") => "librarian",
         _ => "student",
     };
 
@@ -54,15 +54,18 @@ pub async fn register(pool: web::Data<DbPool>, req: web::Json<RegisterRequest>) 
                 address: None,
                 role: role.to_string(),
                 avatar_url: None,
+                balance: 0.0,
                 created_at: now,
             };
             HttpResponse::Created().json(ApiResponse::success(AuthResponse { token, user }))
         }
         Err(e) => {
-            if e.to_string().contains("UNIQUE") {
+            log::error!("Registration database error: {}", e);
+            let err_msg = e.to_string();
+            if err_msg.contains("UNIQUE") {
                 HttpResponse::Conflict().json(ApiResponse::<()>::error("Username or email already exists"))
             } else {
-                HttpResponse::InternalServerError().json(ApiResponse::<()>::error("Registration failed"))
+                HttpResponse::InternalServerError().json(ApiResponse::<()>::error(&format!("Registration failed: {}", err_msg)))
             }
         }
     }
@@ -90,6 +93,7 @@ pub async fn login(pool: web::Data<DbPool>, req: web::Json<LoginRequest>) -> Htt
                     address: user.address,
                     role: user.role,
                     avatar_url: user.avatar_url,
+                    balance: 0.0,
                     created_at: user.created_at,
                 };
                 HttpResponse::Ok().json(ApiResponse::success(AuthResponse {
@@ -161,13 +165,14 @@ pub async fn list_users(pool: web::Data<DbPool>, req: HttpRequest) -> HttpRespon
         Err(_) => return HttpResponse::Forbidden().json(ApiResponse::<()>::error("Forbidden")),
     };
 
-    if db_role != "librarian" {
-        return HttpResponse::Forbidden()
-            .json(ApiResponse::<()>::error("Forbidden: Librarian only"));
+    if db_role != "librarian" && db_role != "addmin" {
+        return HttpResponse::Forbidden().json(ApiResponse::<()>::error("Forbidden: Staff only"));
     }
 
     match sqlx::query_as::<_, UserProfile>(
-        "SELECT id, username, email, full_name, phone, address, role, avatar_url, created_at FROM users ORDER BY created_at DESC"
+        "SELECT u.id, u.username, u.email, u.full_name, u.phone, u.address, u.role, u.avatar_url, u.created_at, COALESCE(w.balance, 0.0) as balance 
+         FROM users u LEFT JOIN wallets w ON u.id = w.user_id 
+         ORDER BY u.created_at DESC"
     )
     .fetch_all(&pool.pool)
     .await {
@@ -177,4 +182,108 @@ pub async fn list_users(pool: web::Data<DbPool>, req: HttpRequest) -> HttpRespon
             HttpResponse::InternalServerError().json(ApiResponse::<()>::error("Database error"))
         }
     }
+}
+
+pub async fn update_user_role(
+    pool: web::Data<DbPool>,
+    hub: web::Data<Arc<Hub>>,
+    req: HttpRequest,
+    path: web::Path<String>,
+    body: web::Json<UpdateRoleRequest>,
+) -> HttpResponse {
+    let claims = match extract_claims(&req) {
+        Some(c) => c,
+        None => return HttpResponse::Unauthorized().json(ApiResponse::<()>::error("Unauthorized")),
+    };
+
+    // Check role from DB
+    let db_role: String = match sqlx::query_scalar("SELECT role FROM users WHERE id = $1")
+        .bind(&claims.sub)
+        .fetch_one(&pool.pool)
+        .await
+    {
+        Ok(r) => r,
+        Err(_) => return HttpResponse::Forbidden().json(ApiResponse::<()>::error("Forbidden")),
+    };
+
+    if db_role != "addmin" {
+        return HttpResponse::Forbidden().json(ApiResponse::<()>::error("Forbidden: Admin only"));
+    }
+
+    let user_id = path.into_inner();
+    let now = chrono::Utc::now().to_rfc3339();
+
+    // Update role
+    match sqlx::query("UPDATE users SET role = $1, updated_at = $2 WHERE id = $3")
+        .bind(&body.role)
+        .bind(&now)
+        .bind(&user_id)
+        .execute(&pool.pool)
+        .await
+    {
+        Ok(_) => {
+            // Realtime notification
+            hub.broadcast(
+                "USER_UPDATED",
+                serde_json::json!({
+                    "user_id": user_id,
+                    "new_role": body.role
+                }),
+            );
+
+            HttpResponse::Ok().json(ApiResponse::success(serde_json::json!({
+                "user_id": user_id,
+                "new_role": body.role,
+                "message": "User role updated successfully"
+            })))
+        }
+        Err(e) => {
+            log::error!("Failed to update user role: {}", e);
+            HttpResponse::InternalServerError().json(ApiResponse::<()>::error(&format!(
+                "Failed to update role: {}",
+                e
+            )))
+        }
+    }
+}
+
+pub async fn send_notification(
+    pool: web::Data<DbPool>,
+    hub: web::Data<Arc<Hub>>,
+    req: HttpRequest,
+    body: web::Json<NotificationRequest>,
+) -> HttpResponse {
+    let claims = match extract_claims(&req) {
+        Some(c) => c,
+        None => return HttpResponse::Unauthorized().json(ApiResponse::<()>::error("Unauthorized")),
+    };
+
+    // Check if requester is staff/admin
+    let db_role: String = match sqlx::query_scalar("SELECT role FROM users WHERE id = $1")
+        .bind(&claims.sub)
+        .fetch_one(&pool.pool)
+        .await
+    {
+        Ok(r) => r,
+        Err(_) => return HttpResponse::Forbidden().json(ApiResponse::<()>::error("Forbidden")),
+    };
+
+    if db_role != "librarian" && db_role != "addmin" {
+        return HttpResponse::Forbidden().json(ApiResponse::<()>::error("Forbidden: Staff only"));
+    }
+
+    // Send real-time notification
+    hub.notify_user(
+        &body.user_id,
+        "ADMIN_NOTIFICATION",
+        serde_json::json!({
+            "message": body.message,
+            "is_key": body.is_key,
+            "sender": claims.username
+        }),
+    );
+
+    HttpResponse::Ok().json(ApiResponse::success(serde_json::json!({
+        "message": "Notification sent successfully"
+    })))
 }

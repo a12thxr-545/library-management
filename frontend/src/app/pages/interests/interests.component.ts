@@ -4,6 +4,7 @@ import { Router } from '@angular/router';
 import { CategoryService } from '../../services/category.service';
 import { InterestService } from '../../services/interest.service';
 import { Category } from '../../models';
+import { LoadingService } from '../../services/loading.service';
 
 @Component({
   selector: 'app-interests',
@@ -17,7 +18,7 @@ import { Category } from '../../models';
 
         <div class="alert" *ngIf="error">{{ error }}</div>
         
-        <div class="category-grid">
+        <div class="category-grid" *ngIf="!(loadingService.loading$ | async); else skeleton">
           <div 
             *ngFor="let cat of categories" 
             class="cat-card" 
@@ -32,6 +33,15 @@ import { Category } from '../../models';
             </div>
           </div>
         </div>
+
+        <ng-template #skeleton>
+          <div class="category-grid">
+            <div class="cat-card" *ngFor="let s of [1,2,3,4,5,6,7,8]">
+               <div class="skeleton" style="width: 50px; height: 50px; border-radius: 50%;"></div>
+               <div class="skeleton" style="height: 14px; width: 80px; margin-top: 10px;"></div>
+            </div>
+          </div>
+        </ng-template>
 
         <div class="actions">
           <button 
@@ -118,7 +128,8 @@ export class InterestsComponent implements OnInit {
   constructor(
     private categoryService: CategoryService,
     private interestService: InterestService,
-    private router: Router
+    private router: Router,
+    public loadingService: LoadingService
   ) { }
 
   ngOnInit() {

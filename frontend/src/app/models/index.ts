@@ -8,6 +8,7 @@ export interface User {
   /** SRS roles: student | professor | librarian */
   role: string;
   avatar_url?: string;
+  balance?: number;
   created_at: string;
 }
 

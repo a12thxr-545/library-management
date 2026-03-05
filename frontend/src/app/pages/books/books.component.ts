@@ -1,72 +1,112 @@
-import { Component, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, OnInit, OnDestroy } from '@angular/core';
+import { CommonModule, Location } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink, ActivatedRoute } from '@angular/router';
 import { BookService } from '../../services/book.service';
 import { CategoryService } from '../../services/category.service';
+import { RealtimeService } from '../../services/realtime.service';
 import { Book, Category } from '../../models';
+import { TranslatePipe } from '../../pipes/translate.pipe';
+import { LoadingService } from '../../services/loading.service';
+import { Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-books',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink, TranslatePipe],
   template: `
     <div class="page">
+      <div class="top-nav">
+        <a (click)="goBack()" class="back-btn">
+          <i class="material-icons">arrow_back</i>
+          <span>{{ 'common.return' | t }}</span>
+        </a>
+      </div>
       <!-- Top row: search + sort -->
       <div class="toolbar">
         <div class="search-wrap">
           <i class="material-icons search-icon">search</i>
-          <input [(ngModel)]="search" (ngModelChange)="onSearch()" placeholder="Search books..." />
+          <input [(ngModel)]="search" (ngModelChange)="onSearch()" [placeholder]="'home.search_placeholder' | t" />
         </div>
         <select [(ngModel)]="sort" (ngModelChange)="load()">
-          <option value="latest">Newest</option>
-          <option value="popular">Popular</option>
+          <option value="latest">{{ 'home.new_arrivals' | t }}</option>
+          <option value="popular">{{ 'home.most_popular' | t }}</option>
           <option value="title">A-Z</option>
         </select>
       </div>
 
       <!-- Category tab bar -->
       <div class="tab-bar">
-        <div class="tab-scroll">
-          <button class="tab-item" [class.active]="!selectedCat" (click)="selectCat(null)">All</button>
+        <div class="tab-scroll" *ngIf="!(loadingService.loading$ | async); else catSkeleton">
+          <button class="tab-item" [class.active]="!selectedCat" (click)="selectCat(null)">{{ 'common.all' | t }}</button>
           <button class="tab-item" *ngFor="let c of categories" [class.active]="selectedCat === c.id" (click)="selectCat(c.id)">
             {{ c.name }}
           </button>
         </div>
+        <ng-template #catSkeleton>
+          <div class="tab-scroll">
+            <div class="skeleton" *ngFor="let s of [1,2,3,4,5]" style="height: 30px; width: 80px; margin: 10px; border-radius: 4px;"></div>
+          </div>
+        </ng-template>
       </div>
 
-      <div class="result-info">{{ total }} result{{ total !== 1 ? 's' : '' }}</div>
+      <div class="result-info" *ngIf="!(loadingService.loading$ | async); else infoSkeleton">{{ total }} {{ 'nav.books' | t }}</div>
+      <ng-template #infoSkeleton>
+        <div class="skeleton" style="height: 14px; width: 100px; margin: 14px 0 10px;"></div>
+      </ng-template>
 
       <div class="books-grid">
-        <div class="book-row" *ngFor="let b of books" [routerLink]="['/books', b.id]">
-          <img [src]="b.cover_url || fallback" [alt]="b.title" (error)="imgErr($event)" />
-          <div class="book-info">
-            <div class="book-title">{{ b.title }}</div>
-            <div class="book-meta">{{ b.author }} · {{ b.category_name }}</div>
-            <div class="book-stats">{{ b.borrow_count }} borrows · {{ b.view_count }} views</div>
+        <ng-container *ngIf="!(loadingService.loading$ | async); else booksSkeleton">
+          <div class="book-row" *ngFor="let b of books" [routerLink]="['/books', b.id]">
+            <img [src]="b.cover_url || fallback" [alt]="b.title" (error)="imgErr($event)" />
+            <div class="book-info">
+              <div class="book-title">{{ b.title }}</div>
+              <div class="book-meta">{{ b.author }} · {{ b.category_name }}</div>
+              <div class="book-stats">{{ b.borrow_count }} {{ 'book.borrows' | t }} · {{ b.view_count }} {{ 'book.views' | t }}</div>
+            </div>
+            <div class="book-right">
+              <span class="avail" [class.red]="b.available_copies === 0">
+                {{ b.available_copies > 0 ? b.available_copies + ' ' + ('book.available' | t) : ('book.unavailable' | t) }}
+              </span>
+            </div>
           </div>
-          <div class="book-right">
-            <span class="avail" [class.red]="b.available_copies === 0">
-              {{ b.available_copies > 0 ? b.available_copies + ' available' : 'Unavailable' }}
-            </span>
+        </ng-container>
+        <ng-template #booksSkeleton>
+          <div class="book-row" *ngFor="let s of [1,2,3,4,5,6]">
+            <div class="skeleton" style="width: 40px; height: 56px; border-radius: 4px;"></div>
+            <div class="book-info">
+              <div class="skeleton" style="height: 16px; width: 60%; margin-bottom: 6px;"></div>
+              <div class="skeleton" style="height: 12px; width: 40%;"></div>
+            </div>
+            <div class="book-right">
+              <div class="skeleton" style="height: 24px; width: 80px; border-radius: 4px;"></div>
+            </div>
           </div>
-        </div>
+        </ng-template>
       </div>
 
       <!-- Pagination -->
       <div class="pagination" *ngIf="total > limit">
         <button [disabled]="offset === 0" (click)="prev()">
-          <i class="material-icons">arrow_back</i> Previous
+          <i class="material-icons">arrow_back</i>
         </button>
         <span>Page {{ page }} / {{ totalPages }}</span>
         <button [disabled]="offset + limit >= total" (click)="next()">
-          Next <i class="material-icons">arrow_forward</i>
+          <i class="material-icons">arrow_forward</i>
         </button>
       </div>
     </div>
   `,
   styles: [`
-    .page { max-width: 900px; margin: 0 auto; padding: 28px 20px 28px; }
+    .page { max-width: 900px; margin: 0 auto; padding: 12px 20px 28px; }
+    .top-nav { margin-bottom: 16px; display: flex; align-items: center; }
+    .back-btn { 
+      display: flex; align-items: center; gap: 8px; color: var(--text2); 
+      cursor: pointer; text-decoration: none; font-size: 0.85rem; font-weight: 600;
+      padding: 6px 12px; border-radius: 8px; transition: all 0.2s;
+    }
+    .back-btn:hover { background: var(--bg2); color: var(--text); }
+    .back-btn i { font-size: 1.1rem; }
     .toolbar { display: flex; gap: 10px; margin-bottom: 0; align-items: center; }
     .search-wrap { flex: 1; min-width: 0; position: relative; display: flex; align-items: center; }
     .search-icon { position: absolute; left: 10px; color: var(--text3); font-size: 1.1rem; }
@@ -140,27 +180,50 @@ import { Book, Category } from '../../models';
     @media (max-width: 480px) {
       .page { padding: 12px 12px 24px; }
       .tab-bar { margin: 0 -12px; padding: 0 12px; }
-      .toolbar { gap: 8px; }
+      .toolbar { flex-direction: column; align-items: stretch; gap: 8px; }
+      .search-wrap { width: 100%; }
+      select { width: 100%; padding: 8px; }
       .book-stats { display: none; }
       .cat-btn { font-size: 0.73rem; padding: 4px 10px; }
     }
   `]
 })
-export class BooksComponent implements OnInit {
+export class BooksComponent implements OnInit, OnDestroy {
   books: Book[] = []; categories: Category[] = [];
   search = ''; selectedCat: string | null = null; sort = 'latest';
   total = 0; limit = 20; offset = 0;
   fallback = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="56"><rect width="40" height="56" fill="%2330363d"/><text x="20" y="28" font-family="sans-serif" font-size="10" fill="%238b949e" text-anchor="middle" dy=".3em">📚</text></svg>';
   private searchTimer: any;
+  private sub: Subscription | null = null;
 
-  constructor(private bookService: BookService, private categoryService: CategoryService, private route: ActivatedRoute) { }
+  constructor(
+    private bookService: BookService,
+    private categoryService: CategoryService,
+    private route: ActivatedRoute,
+    private realtime: RealtimeService,
+    public loadingService: LoadingService,
+    private location: Location
+  ) { }
 
   get page() { return Math.floor(this.offset / this.limit) + 1; }
   get totalPages() { return Math.ceil(this.total / this.limit); }
 
   ngOnInit() {
     this.categoryService.getCategories().subscribe(r => { if (r.data) this.categories = r.data; });
+
+    // Listen for realtime updates
+    this.sub = this.realtime.messages$.subscribe(msg => {
+      const events = ['BOOK_STOCK_UPDATED', 'BORROW_CREATED', 'BORROW_RETURNED', 'BORROW_UPDATED'];
+      if (events.includes(msg.event)) {
+        this.load();
+      }
+    });
+
     this.route.queryParams.subscribe(p => { if (p['search']) this.search = p['search']; this.load(); });
+  }
+
+  ngOnDestroy() {
+    if (this.sub) this.sub.unsubscribe();
   }
 
   load() {
@@ -177,4 +240,5 @@ export class BooksComponent implements OnInit {
   prev() { this.offset -= this.limit; this.load(); }
   next() { this.offset += this.limit; this.load(); }
   imgErr(e: any) { e.target.src = this.fallback; }
+  goBack() { this.location.back(); }
 }

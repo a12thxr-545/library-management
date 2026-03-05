@@ -51,6 +51,15 @@ export class AuthService {
         return !!this.token;
     }
 
+    get isAdmin(): boolean {
+        return this.currentUser?.role === 'addmin';
+    }
+
+    get isLibrarian(): boolean {
+        const role = this.currentUser?.role;
+        return role === 'librarian' || role === 'addmin';
+    }
+
     login(data: LoginRequest): Observable<ApiResponse<AuthResponse>> {
         return this.http.post<ApiResponse<AuthResponse>>(`${this.apiUrl}/auth/login`, data).pipe(
             tap(res => {
@@ -84,5 +93,13 @@ export class AuthService {
 
     getUsers(): Observable<ApiResponse<User[]>> {
         return this.http.get<ApiResponse<User[]>>(`${this.apiUrl}/admin/users`);
+    }
+
+    updateRole(userId: string, role: string): Observable<ApiResponse<any>> {
+        return this.http.put<ApiResponse<any>>(`${this.apiUrl}/admin/users/${userId}/role`, { role });
+    }
+
+    sendNotification(userId: string, message: string, isKey: boolean): Observable<ApiResponse<any>> {
+        return this.http.post<ApiResponse<any>>(`${this.apiUrl}/admin/notifications`, { user_id: userId, message, is_key: isKey });
     }
 }

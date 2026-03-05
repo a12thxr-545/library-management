@@ -1,5 +1,5 @@
-import { Component, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, OnInit, OnDestroy } from '@angular/core';
+import { CommonModule, Location } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink, Router } from '@angular/router';
 import { WalletService } from '../../services/wallet.service';
@@ -7,12 +7,17 @@ import { BookService } from '../../services/book.service';
 import { AuthService } from '../../services/auth.service';
 import { RealtimeService, RealtimeMessage } from '../../services/realtime.service';
 import { Wallet, WalletTransaction, Borrow } from '../../models';
+import { Subscription } from 'rxjs';
+
+import { TranslatePipe } from '../../pipes/translate.pipe';
+import { LanguageService } from '../../services/language.service';
+import { LoadingService } from '../../services/loading.service';
 
 @Component({
-    selector: 'app-wallet',
-    standalone: true,
-    imports: [CommonModule, FormsModule, RouterLink],
-    template: `
+  selector: 'app-wallet',
+  standalone: true,
+  imports: [CommonModule, FormsModule, TranslatePipe],
+  template: `
 <div class="wp">
   <!-- PAYMENT GATEWAY MODAL -->
   <div class="overlay" *ngIf="showGateway" (click)="closeGateway($event)">
@@ -24,7 +29,7 @@ import { Wallet, WalletTransaction, Borrow } from '../../models';
           <div class="gw-logo"><i class="material-icons">lock</i></div>
           <div>
             <div class="gw-title">LibraryPay Gateway</div>
-            <div class="gw-sub">Secured · 256-bit SSL</div>
+            <div class="gw-sub">{{ 'wallet.gateway.secured' | t }}</div>
           </div>
         </div>
         <button class="gw-close" (click)="closeGateway(null)" *ngIf="!gwProcessing && !gwDone">
@@ -34,20 +39,20 @@ import { Wallet, WalletTransaction, Borrow } from '../../models';
 
       <!-- Amount Banner -->
       <div class="gw-amount-bar" *ngIf="!gwDone">
-        <span class="gw-amount-label">Top-up Amount</span>
+        <span class="gw-amount-label">{{ 'wallet.gateway.amount' | t }}</span>
         <span class="gw-amount-val">฿{{ topUpAmount | number:'1.2-2' }}</span>
       </div>
 
       <!-- Method Tabs -->
       <div class="gw-tabs" *ngIf="!gwProcessing && !gwDone">
         <button class="gw-tab" [class.act]="gwMethod==='card'" (click)="gwMethod='card'">
-          <i class="material-icons">credit_card</i><span>Card</span>
+          <i class="material-icons">credit_card</i><span>{{ 'wallet.gateway.card' | t }}</span>
         </button>
         <button class="gw-tab" [class.act]="gwMethod==='promptpay'" (click)="gwMethod='promptpay'">
-          <i class="material-icons">qr_code_2</i><span>PromptPay</span>
+          <i class="material-icons">qr_code_2</i><span>{{ 'wallet.gateway.promptpay' | t }}</span>
         </button>
         <button class="gw-tab" [class.act]="gwMethod==='bank'" (click)="gwMethod='bank'">
-          <i class="material-icons">account_balance</i><span>โอนเงิน</span>
+          <i class="material-icons">account_balance</i><span>{{ 'wallet.gateway.transfer' | t }}</span>
         </button>
       </div>
 
@@ -79,23 +84,23 @@ import { Wallet, WalletTransaction, Borrow } from '../../models';
         <!-- Card Form -->
         <div class="gw-form">
           <div class="gw-field">
-            <label>Card Number</label>
+            <label>{{ 'wallet.gateway.card_number' | t }}</label>
             <div class="gw-input-wrap">
               <input [(ngModel)]="card.number" (ngModelChange)="fmtCard($event)" (focus)="showCardBack=false" placeholder="1234 5678 9012 3456" maxlength="19">
               <i class="material-icons">credit_card</i>
             </div>
           </div>
           <div class="gw-field">
-            <label>Cardholder Name</label>
+            <label>{{ 'wallet.gateway.card_holder' | t }}</label>
             <input [(ngModel)]="card.name" (focus)="showCardBack=false" placeholder="Name on card">
           </div>
           <div class="gw-row2">
             <div class="gw-field">
-              <label>Expiry</label>
+              <label>{{ 'wallet.gateway.card_expiry' | t }}</label>
               <input [(ngModel)]="card.expiry" (ngModelChange)="fmtExpiry($event)" (focus)="showCardBack=false" placeholder="MM/YY" maxlength="5">
             </div>
             <div class="gw-field">
-              <label>CVV</label>
+              <label>{{ 'wallet.gateway.card_cvv' | t }}</label>
               <input [(ngModel)]="card.cvv" (input)="showCardBack=true" (blur)="showCardBack=false" placeholder="123" maxlength="4" type="password">
             </div>
           </div>
@@ -112,29 +117,29 @@ import { Wallet, WalletTransaction, Borrow } from '../../models';
           </div>
           <div class="pp-info">
             <div class="pp-amt">฿{{ topUpAmount | number:'1.2-2' }}</div>
-            <div class="pp-hint">สแกน QR ด้วยแอปธนาคาร</div>
+            <div class="pp-hint">{{ 'wallet.gateway.pp_hint' | t }}</div>
             <div class="pp-id"><i class="material-icons">phone_iphone</i> PromptPay: 081-234-5678</div>
           </div>
         </div>
         <div class="pp-steps">
-          <div class="pp-step"><span>1</span> เปิดแอปธนาคาร</div>
-          <div class="pp-step"><span>2</span> สแกน QR Code ด้านบน</div>
-          <div class="pp-step"><span>3</span> ยืนยันยอด ฿{{ topUpAmount | number }}</div>
-          <div class="pp-step"><span>4</span> กดปุ่ม "ยืนยัน" ด้านล่าง</div>
+          <div class="pp-step"><span>1</span> {{ 'wallet.gateway.pp_step1' | t }}</div>
+          <div class="pp-step"><span>2</span> {{ 'wallet.gateway.pp_step2' | t }}</div>
+          <div class="pp-step"><span>3</span> {{ 'wallet.gateway.pp_step3' | t }} ฿{{ topUpAmount | number }}</div>
+          <div class="pp-step"><span>4</span> {{ 'wallet.gateway.pp_step4' | t }}</div>
         </div>
       </div>
 
       <!-- BANK TRANSFER METHOD -->
       <div *ngIf="gwMethod==='bank' && !gwProcessing && !gwDone" class="gw-body">
         <div class="bank-card">
-          <div class="bank-logo-row"><div class="bank-badge kbank">KBANK</div><span>Kasikorn Bank</span></div>
-          <div class="bank-row"><span>ชื่อบัญชี</span><strong>LibraryTH Co., Ltd.</strong></div>
-          <div class="bank-row"><span>เลขที่บัญชี</span><strong class="mono">012-3-45678-9</strong></div>
-          <div class="bank-row"><span>ยอดโอน</span><strong class="bank-amt">฿{{ topUpAmount | number:'1.2-2' }}</strong></div>
+          <div class="bank-logo-row"><div class="bank-badge kbank">KBANK</div><span>{{ 'wallet.gateway.bank_name' | t }}</span></div>
+          <div class="bank-row"><span>{{ 'wallet.gateway.acc_name' | t }}</span><strong>LibraryTH Co., Ltd.</strong></div>
+          <div class="bank-row"><span>{{ 'wallet.gateway.acc_num' | t }}</span><strong class="mono">012-3-45678-9</strong></div>
+          <div class="bank-row"><span>{{ 'wallet.gateway.transfer_amt' | t }}</span><strong class="bank-amt">฿{{ topUpAmount | number:'1.2-2' }}</strong></div>
         </div>
         <div class="bank-note">
           <i class="material-icons">info</i>
-          โอนตามยอดที่ระบุและส่งสลิปให้แอดมินภายใน 24 ชั่วโมง
+          {{ 'wallet.gateway.bank_hint' | t }}
         </div>
       </div>
 
@@ -142,16 +147,16 @@ import { Wallet, WalletTransaction, Borrow } from '../../models';
       <div class="gw-processing" *ngIf="gwProcessing">
         <div class="proc-ring"></div>
         <div class="proc-icon"><i class="material-icons spin">autorenew</i></div>
-        <div class="proc-title">กำลังดำเนินการ...</div>
+        <div class="proc-title">{{ 'wallet.gateway.processing' | t }}</div>
         <div class="proc-steps">
           <div class="proc-step" [class.done]="procStep>0" [class.active]="procStep===0">
-            <i class="material-icons">{{ procStep>0?'check_circle':'radio_button_unchecked' }}</i> ตรวจสอบข้อมูล
+            <i class="material-icons">{{ procStep>0?'check_circle':'radio_button_unchecked' }}</i> {{ 'wallet.gateway.proc_verify' | t }}
           </div>
           <div class="proc-step" [class.done]="procStep>1" [class.active]="procStep===1">
-            <i class="material-icons">{{ procStep>1?'check_circle':'radio_button_unchecked' }}</i> ยืนยันการชำระ
+            <i class="material-icons">{{ procStep>1?'check_circle':'radio_button_unchecked' }}</i> {{ 'wallet.gateway.proc_confirm' | t }}
           </div>
           <div class="proc-step" [class.done]="procStep>2" [class.active]="procStep===2">
-            <i class="material-icons">{{ procStep>2?'check_circle':'radio_button_unchecked' }}</i> เติมเงินเข้า Wallet
+            <i class="material-icons">{{ procStep>2?'check_circle':'radio_button_unchecked' }}</i> {{ 'wallet.gateway.proc_wallet' | t }}
           </div>
         </div>
       </div>
@@ -160,16 +165,16 @@ import { Wallet, WalletTransaction, Borrow } from '../../models';
       <div class="gw-success" *ngIf="gwDone">
         <div class="succ-ring"></div>
         <i class="material-icons succ-ico">check_circle</i>
-        <h2>เติมเงินสำเร็จ!</h2>
-        <p>ยอดเงิน <strong>฿{{ gwPaid | number:'1.2-2' }}</strong> เข้า Wallet แล้ว</p>
+        <h2>{{ 'wallet.gateway.success_title' | t }}</h2>
+        <p>{{ 'wallet.gateway.success_sub' | t }} <strong>฿{{ gwPaid | number:'1.2-2' }}</strong></p>
         <div class="succ-ref">
-          <span>รหัสอ้างอิง</span><strong>{{ gwRef }}</strong>
+          <span>{{ 'wallet.gateway.ref_code' | t }}</span><strong>{{ gwRef }}</strong>
         </div>
         <div class="succ-bal">
-          <span>ยอดคงเหลือ</span>
+          <span>{{ 'wallet.balance' | t }}</span>
           <span class="succ-bal-val">฿{{ wallet ? wallet.balance.toFixed(2) : '0.00' }}</span>
         </div>
-        <button class="succ-btn" (click)="closeGateway(null)">ปิด</button>
+        <button class="succ-btn" (click)="closeGateway(null)">{{ 'wallet.gateway.close' | t }}</button>
       </div>
 
       <!-- Error MSG -->
@@ -179,10 +184,10 @@ import { Wallet, WalletTransaction, Borrow } from '../../models';
       <div class="gw-footer" *ngIf="!gwProcessing && !gwDone">
         <button class="gw-pay-btn" (click)="confirmPayment()">
           <i class="material-icons">lock</i>
-          {{ gwMethod==='card' ? 'ชำระเงิน' : gwMethod==='promptpay' ? 'ยืนยันการชำระ' : 'ส่งสลิปแล้ว' }}
+          {{ gwMethod==='card' ? ('wallet.gateway.card' | t) : gwMethod==='promptpay' ? ('wallet.gateway.confirm_btn' | t) : ('wallet.gateway.send_slip' | t) }}
           ฿{{ topUpAmount | number:'1.2-2' }}
         </button>
-        <p class="gw-secure"><i class="material-icons">verified_user</i> ข้อมูลถูกเข้ารหัส SSL 256-bit</p>
+        <p class="gw-secure"><i class="material-icons">verified_user</i> {{ 'wallet.gateway.secure_info' | t }}</p>
       </div>
 
     </div>
@@ -190,94 +195,97 @@ import { Wallet, WalletTransaction, Borrow } from '../../models';
 
   <!-- MAIN PAGE -->
   <div class="page-header">
-    <a routerLink="/profile" class="back-btn"><i class="material-icons">arrow_back</i> กลับ</a>
+    <a (click)="goBack()" class="back-btn" style="cursor: pointer"><i class="material-icons">arrow_back</i> {{ 'common.return' | t }}</a>
     <div class="header-title">
       <i class="material-icons">account_balance_wallet</i>
-      <h1>กระเป๋าเงิน</h1>
+      <h1>{{ 'wallet.title' | t }}</h1>
     </div>
   </div>
 
   <div class="wallet-layout">
     <div class="left-col">
       <!-- Wallet Card -->
-      <div class="wcard">
+      <div class="wcard" *ngIf="!(loadingService.loading$ | async); else walletCardSkeleton">
         <div class="wcard-bg"></div>
         <div class="wcard-content">
           <div class="wcard-top">
             <div class="wcard-icon"><i class="material-icons">account_balance_wallet</i></div>
-            <div class="wcard-label">ยอดเงินคงเหลือ</div>
+            <div class="wcard-label">{{ 'wallet.balance' | t }}</div>
           </div>
           <div class="bal-display">
             <span class="bal-cur">฿</span>
             <span class="bal-amt">{{ wallet ? wallet.balance.toFixed(2) : '0.00' }}</span>
           </div>
           <div class="wcard-foot">
-            <span>{{ userName }}</span>
+            <span class="wcard-username">{{ userName }}</span>
             <span class="dots">●●●● ●●●● ●●●●</span>
           </div>
         </div>
       </div>
+      <ng-template #walletCardSkeleton>
+        <div class="wcard">
+          <div class="skeleton" style="width: 100%; height: 100%;"></div>
+        </div>
+      </ng-template>
 
       <!-- Top-Up Panel -->
       <div class="panel">
-        <div class="ph"><i class="material-icons">add_circle</i><span>เติมเงิน</span></div>
+        <div class="ph"><i class="material-icons">add_circle</i><span>{{ 'wallet.topup' | t }}</span></div>
         <div class="quick-grid">
           <button class="qbtn" *ngFor="let a of quickAmounts" [class.sel]="topUpAmount===a" (click)="topUpAmount=a">
             ฿{{ a | number }}
           </button>
         </div>
-        <label class="field-lbl">จำนวนเงิน (บาท)</label>
+        <label class="field-lbl">{{ ('wallet.topup.placeholder' | t) + ' (฿)' }}</label>
         <div class="amt-row">
           <span class="baht">฿</span>
-          <input type="number" [(ngModel)]="topUpAmount" min="1" max="100000" placeholder="กรอกจำนวน" class="amt-inp">
+          <input type="number" [(ngModel)]="topUpAmount" min="1" max="100000" [placeholder]="'wallet.topup.placeholder' | t" class="amt-inp">
         </div>
         <button class="topup-btn" (click)="openGateway()">
-          <i class="material-icons">add</i> เติมเงิน ฿{{ topUpAmount | number }}
+          <i class="material-icons">add</i> {{ 'wallet.topup.btn' | t }} ฿{{ topUpAmount | number }}
         </button>
         <!-- Payment method badges -->
         <div class="pm-badges">
-          <div class="pm-badge"><i class="material-icons">credit_card</i><span>Card</span></div>
-          <div class="pm-badge"><i class="material-icons">qr_code_2</i><span>PromptPay</span></div>
-          <div class="pm-badge"><i class="material-icons">account_balance</i><span>โอนเงิน</span></div>
+          <div class="pm-badge"><i class="material-icons">credit_card</i><span>{{ 'wallet.gateway.card' | t }}</span></div>
+          <div class="pm-badge"><i class="material-icons">qr_code_2</i><span>{{ 'wallet.gateway.promptpay' | t }}</span></div>
+          <div class="pm-badge"><i class="material-icons">account_balance</i><span>{{ 'wallet.gateway.transfer' | t }}</span></div>
         </div>
       </div>
 
       <!-- Fines -->
       <div class="panel fine-panel" *ngIf="unpaidFines.length>0">
-        <div class="ph danger"><i class="material-icons">warning</i><span>ค่าปรับค้างชำระ</span><span class="bdg">{{ unpaidFines.length }}</span></div>
+        <div class="ph danger"><i class="material-icons">warning</i><span>{{ 'wallet.fines' | t }}</span><span class="bdg">{{ unpaidFines.length }}</span></div>
         <div *ngFor="let b of unpaidFines" class="fine-item">
           <div class="fi-info">
-            <div class="fi-title">{{ b.book_title||'หนังสือ' }}</div>
-            <div class="fi-over"><i class="material-icons">schedule</i>เกินกำหนด {{ daysOverdue(b.due_date) }} วัน</div>
+            <div class="fi-title">{{ b.book_title||'Book' }}</div>
+            <div class="fi-over"><i class="material-icons">schedule</i>{{ 'common.overdue' | t }} {{ daysOverdue(b.due_date) }} {{ 'common.days' | t }}</div>
           </div>
           <div class="fi-right">
             <div class="fi-amt">฿{{ b.fine_amount.toFixed(2) }}</div>
             <button class="pay-btn" (click)="payFine(b)" [disabled]="payingFineId===b.id">
-              <i class="material-icons">{{ payingFineId===b.id?'autorenew':'payment' }}</i>{{ payingFineId===b.id?'...':'จ่าย' }}
+              <i class="material-icons">{{ payingFineId===b.id?'autorenew':'payment' }}</i>{{ payingFineId===b.id?'...':'profile.pay_debt' | t }}
             </button>
           </div>
         </div>
-        <div class="fine-total"><span>รวม</span><span class="fine-total-amt">฿{{ totalUnpaidFine.toFixed(2) }}</span></div>
+        <div class="fine-total"><span>{{ 'home.view_all' | t }}</span><span class="fine-total-amt">฿{{ totalUnpaidFine.toFixed(2) }}</span></div>
         <div class="alert-err" *ngIf="fineError">{{ fineError }}</div>
         <div class="alert-ok" *ngIf="fineSuccess">{{ fineSuccess }}</div>
       </div>
 
       <div class="panel all-clear" *ngIf="unpaidFines.length===0 && !loading">
         <div class="ac-ico"><i class="material-icons">verified</i></div>
-        <strong>ไม่มีค่าปรับค้างชำระ</strong>
-        <p>คุณยืมหนังสือตรงเวลาดีมาก!</p>
+        <strong>{{ 'wallet.fines' | t }} : {{ 'common.returned' | t }}</strong>
       </div>
     </div>
 
     <div class="right-col">
       <div class="panel">
-        <div class="ph"><i class="material-icons">history</i><span>ประวัติรายการ</span></div>
-        <div class="loading-s" *ngIf="loading"><i class="material-icons spin">autorenew</i> กำลังโหลด...</div>
-        <div *ngIf="!loading">
+        <div class="ph"><i class="material-icons">history</i><span>{{ 'wallet.history' | t }}</span></div>
+        <div class="txn-list" *ngIf="!(loadingService.loading$ | async); else txnSkeleton">
           <div class="txn-item" *ngFor="let tx of transactions" [class.tt]="tx.tx_type==='topup'" [class.tf]="tx.tx_type!=='topup'">
             <div class="txn-ico"><i class="material-icons">{{ tx.tx_type==='topup'?'add_circle':'remove_circle' }}</i></div>
             <div class="txn-info">
-              <div class="txn-desc">{{ tx.description }}</div>
+              <div class="txn-desc">{{ getTxDesc(tx.description) }}</div>
               <div class="txn-date">{{ fmtDate(tx.created_at) }}</div>
             </div>
             <div class="txn-amt" [class.pos]="tx.tx_type==='topup'" [class.neg]="tx.tx_type!=='topup'">
@@ -285,31 +293,40 @@ import { Wallet, WalletTransaction, Borrow } from '../../models';
             </div>
           </div>
           <div class="empty-t" *ngIf="transactions.length===0">
-            <i class="material-icons">receipt_long</i><p>ยังไม่มีประวัติ</p>
+            <i class="material-icons">receipt_long</i><p>{{ 'common.no_records' | t }}</p>
           </div>
         </div>
+        <ng-template #txnSkeleton>
+          <div class="txn-item" *ngFor="let s of [1,2,3,4,5]">
+            <div class="skeleton" style="width: 34px; height: 34px; border-radius: 50%;"></div>
+            <div class="txn-info">
+              <div class="skeleton" style="height: 14px; width: 60%; margin-bottom: 6px;"></div>
+              <div class="skeleton" style="height: 10px; width: 40%;"></div>
+            </div>
+            <div class="skeleton" style="height: 18px; width: 60px;"></div>
+          </div>
+        </ng-template>
       </div>
 
       <div class="panel">
-        <div class="ph"><i class="material-icons">info</i><span>อัตราค่าปรับ</span></div>
-        <div class="rate-row"><div class="rr-left"><i class="material-icons">school</i>นักศึกษา</div><div class="rr-val">฿25 / วัน</div></div>
-        <div class="rate-row"><div class="rr-left"><i class="material-icons">person</i>อาจารย์</div><div class="rr-val">฿15 / วัน</div></div>
-        <div class="rate-note"><i class="material-icons">timer</i>คำนวณตั้งแต่วันแรกที่เกินกำหนด</div>
+        <div class="ph"><i class="material-icons">info</i><span>{{ 'wallet.fine_rate' | t }}</span></div>
+        <div class="rate-row"><div class="rr-left"><i class="material-icons">school</i>{{ 'wallet.student' | t }}</div><div class="rr-val">25 {{ 'wallet.fine_rate.per_day' | t }}</div></div>
+        <div class="rate-row"><div class="rr-left"><i class="material-icons">person</i>{{ 'wallet.professor' | t }}</div><div class="rr-val">15 {{ 'wallet.fine_rate.per_day' | t }}</div></div>
       </div>
     </div>
   </div>
 </div>
   `,
-    styles: [`
+  styles: [`
     .wp { max-width:1020px; margin:0 auto; padding:24px 20px 60px; font-family:'Inter',sans-serif; }
 
     /* ── Header ── */
-    .page-header { display:flex; align-items:center; gap:16px; margin-bottom:24px; }
-    .back-btn { display:inline-flex; align-items:center; gap:4px; color:var(--text2); font-size:.875rem; text-decoration:none; }
+    .page-header { display:flex; align-items:center; gap:16px; margin-bottom:24px; flex-wrap: wrap; }
+    .back-btn { display:inline-flex; align-items:center; gap:4px; color:var(--text2); font-size:.875rem; text-decoration:none; padding: 6px 0; }
     .back-btn:hover { color:var(--text); text-decoration:none; }
-    .header-title { display:flex; align-items:center; gap:10px; }
+    .header-title { display:flex; align-items:center; gap:10px; flex: 1; min-width: 200px; }
     .header-title i { font-size:1.4rem; color:var(--accent); background:rgba(9,105,218,.12); padding:6px; border-radius:10px; }
-    .header-title h1 { font-size:1.3rem; font-weight:800; margin:0; }
+    .header-title h1 { font-size:1.3rem; font-weight:800; margin:0; white-space: nowrap; }
 
     /* ── Layout ── */
     .wallet-layout { display:grid; grid-template-columns:360px 1fr; gap:20px; align-items:start; }
@@ -325,10 +342,11 @@ import { Wallet, WalletTransaction, Borrow } from '../../models';
     .wcard-top { display:flex; align-items:center; gap:10px; }
     .wcard-icon { width:34px; height:34px; background:rgba(255,255,255,.2); border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:1.1rem; }
     .wcard-label { font-size:.75rem; opacity:.7; text-transform:uppercase; letter-spacing:.5px; }
-    .bal-display { display:flex; align-items:baseline; gap:4px; }
+    .bal-display { display:flex; align-items:baseline; gap:4px; margin: 10px 0; }
     .bal-cur { font-size:1.3rem; font-weight:700; opacity:.85; }
     .bal-amt { font-size:2.4rem; font-weight:800; letter-spacing:-1px; line-height:1; }
     .wcard-foot { display:flex; justify-content:space-between; align-items:center; font-size:.8rem; }
+    .wcard-username { font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
     .dots { opacity:.35; letter-spacing:2px; font-size:.6rem; }
 
     /* ── Panel ── */
@@ -395,9 +413,9 @@ import { Wallet, WalletTransaction, Borrow } from '../../models';
     .loading-s { display:flex; align-items:center; justify-content:center; gap:8px; padding:36px 0; color:var(--text3); font-size:.85rem; }
 
     /* ── GATEWAY MODAL ── */
-    .overlay { position:fixed; inset:0; background:rgba(0,0,0,.75); backdrop-filter:blur(8px); z-index:9000; display:flex; align-items:center; justify-content:center; padding:12px; animation:fadeIn .2s ease; touch-action: none; }
+    .overlay { position:fixed; inset:0; background:rgba(0,0,0,.75); backdrop-filter:blur(8px); z-index:9000; display:flex; align-items:center; justify-content:center; padding:12px; animation:fadeIn .2s ease; overscroll-behavior: contain; }
     @keyframes fadeIn { from{opacity:0} to{opacity:1} }
-    .gw-modal { background:var(--bg2); border:1px solid var(--border); border-radius:24px; width:100%; max-width:420px; max-height: 92vh; display: flex; flex-direction: column; overflow:hidden; box-shadow:0 24px 80px rgba(0,0,0,.5); animation:slideUp .25s cubic-bezier(.175,.885,.32,1.275); touch-action: auto; }
+    .gw-modal { background:var(--bg2); border:1px solid var(--border); border-radius:24px; width:calc(100% - 24px); max-width:420px; max-height: 92vh; display: flex; flex-direction: column; overflow:hidden; box-shadow:0 24px 80px rgba(0,0,0,.5); animation:slideUp .25s cubic-bezier(.175,.885,.32,1.275); }
     @keyframes slideUp { from{opacity:0;transform:translateY(30px)} to{opacity:1;transform:translateY(0)} }
     .gw-header { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border); }
     .gw-header-left { display:flex; align-items:center; gap:12px; }
@@ -411,7 +429,7 @@ import { Wallet, WalletTransaction, Borrow } from '../../models';
     .gw-amount-label { font-size:.78rem; color:var(--text2); font-weight:600; }
     .gw-amount-val { font-size:1.2rem; font-weight:800; color:var(--accent); }
     .gw-tabs { display:flex; gap:0; border-bottom:1px solid var(--border); }
-    .gw-tab { flex:1; padding:12px 8px; background:none; border:none; border-bottom:2px solid transparent; color:var(--text2); font-family:inherit; font-size:.78rem; font-weight:600; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px; transition:all .15s; }
+    .gw-tab { flex:1; padding:12px 6px; background:none; border:none; border-bottom:2px solid transparent; color:var(--text2); font-family:inherit; font-size:.72rem; font-weight:600; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:6px; transition:all .15s; }
     .gw-tab i { font-size:1.2rem; }
     .gw-tab.act { border-bottom-color:var(--accent); color:var(--accent); background:rgba(9,105,218,.05); }
     .gw-body { padding:20px; overflow-y: auto; flex: 1; scrollbar-width: thin; }
@@ -512,190 +530,249 @@ import { Wallet, WalletTransaction, Borrow } from '../../models';
     .spin { animation:spin 1s linear infinite; display:inline-block; }
 
     @media (max-width:820px) { .wallet-layout { grid-template-columns:1fr; } }
-    @media (max-width:480px) { .wp { padding:16px 12px 40px; } .gw-row2 { grid-template-columns:1fr; } }
+    @media (max-width:480px) { 
+      .wp { padding:16px 12px 40px; } 
+      .gw-row2 { grid-template-columns:1fr; } 
+      .pm-badges { flex-wrap: wrap; }
+      .pm-badge { min-width: calc(50% - 4px); flex: unset; }
+      .gw-tabs { overflow-x: auto; scrollbar-width: none; }
+      .gw-tabs::-webkit-scrollbar { display: none; }
+      .gw-tab { min-width: 100px; }
+      .quick-grid { grid-template-columns: repeat(2, 1fr); }
+    }
   `]
 })
-export class WalletComponent implements OnInit {
-    wallet: Wallet | null = null;
-    transactions: WalletTransaction[] = [];
-    borrows: Borrow[] = [];
-    loading = true;
-    payingFineId: string | null = null;
-    topUpAmount = 100;
-    fineError = '';
-    fineSuccess = '';
-    quickAmounts = [50, 100, 200, 500, 1000, 2000];
+export class WalletComponent implements OnInit, OnDestroy {
+  wallet: Wallet | null = null;
+  transactions: WalletTransaction[] = [];
+  borrows: Borrow[] = [];
+  loading = true;
+  payingFineId: string | null = null;
+  topUpAmount = 100;
+  fineError = '';
+  fineSuccess = '';
+  quickAmounts = [50, 100, 200, 500, 1000, 2000];
+  private sub: Subscription | null = null;
+  fallback = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="36" height="50"><rect width="36" height="50" fill="%2330363d"/><text x="18" y="25" font-family="sans-serif" font-size="10" fill="%238b949e" text-anchor="middle" dy=".3em">📚</text></svg>';
 
-    // Gateway state
-    showGateway = false;
-    gwMethod: 'card' | 'promptpay' | 'bank' = 'card';
-    gwProcessing = false;
-    gwDone = false;
-    gwError = '';
-    gwPaid = 0;
-    gwRef = '';
-    procStep = 0;
-    showCardBack = false;
-    card = { number: '', name: '', expiry: '', cvv: '' };
+  // Gateway state
+  showGateway = false;
+  gwMethod: 'card' | 'promptpay' | 'bank' = 'card';
+  gwProcessing = false;
+  gwDone = false;
+  gwError = '';
+  gwPaid = 0;
+  gwRef = '';
+  procStep = 0;
+  showCardBack = false;
+  card = { number: '', name: '', expiry: '', cvv: '' };
 
-    constructor(
-        private walletService: WalletService,
-        private bookService: BookService,
-        private authService: AuthService,
-        private realtime: RealtimeService,
-        private router: Router
-    ) { }
+  constructor(
+    private walletService: WalletService,
+    private bookService: BookService,
+    private authService: AuthService,
+    private realtime: RealtimeService,
+    private router: Router,
+    private location: Location,
+    public loadingService: LoadingService,
+    private languageService: LanguageService
+  ) { }
 
-    get userName() {
-        const u = this.authService.currentUser;
-        return u?.full_name || u?.username || 'ผู้ใช้';
+  get userName() {
+    const u = this.authService.currentUser;
+    return u?.full_name || u?.username || 'ผู้ใช้';
+  }
+  get unpaidFines() { return this.borrows.filter(b => (b.fine_amount || 0) > 0 && !b.fine_paid); }
+  get totalUnpaidFine() { return this.unpaidFines.reduce((s, b) => s + (b.fine_amount || 0), 0); }
+
+  get displayCardNum(): string {
+    const raw = this.card.number.replace(/\s/g, '');
+    const groups: string[] = raw.match(/.{1,4}/g) || [];
+    while (groups.length < 4) groups.push('\u2022\u2022\u2022\u2022');
+    return groups.map((g, i) => i < 3 ? g.padEnd(4, '\u2022') : g).join(' ');
+  }
+
+  ngOnInit() {
+    if (!this.authService.isLoggedIn) { this.router.navigate(['/login']); return; }
+    this.loadAll();
+
+    // Listen for realtime updates
+    this.sub = this.realtime.messages$.subscribe((msg: RealtimeMessage) => {
+      const events = ['WALLET_UPDATED', 'BORROW_RETURNED', 'BORROW_CREATED', 'BORROW_UPDATED'];
+      if (events.includes(msg.event)) {
+        console.log('[Wallet] Realtime update:', msg.event);
+        this.loadAll(false); // Refresh everything silently
+      }
+    });
+  }
+
+  ngOnDestroy() {
+    if (this.sub) this.sub.unsubscribe();
+  }
+
+  loadAll(showLoading = true) {
+    if (showLoading) this.loading = true;
+    this.walletService.getWallet().subscribe(r => { if (r.data) this.wallet = r.data; });
+    this.walletService.getTransactions().subscribe(r => { if (r.data) this.transactions = r.data; if (showLoading) this.loading = false; });
+    this.bookService.myBorrows().subscribe(r => { if (r.data) this.borrows = r.data; });
+  }
+
+  openGateway() {
+    if (!this.topUpAmount || this.topUpAmount <= 0) return;
+    if (this.topUpAmount > 100000) return;
+    this.gwMethod = 'card';
+    this.gwError = '';
+    this.gwDone = false;
+    this.gwProcessing = false;
+    this.gwPaid = 0;
+    this.gwRef = '';
+    this.procStep = 0;
+    this.card = { number: '', name: '', expiry: '', cvv: '' };
+    this.showGateway = true;
+    this.showCardBack = false;
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+  }
+
+  closeGateway(e: MouseEvent | null) {
+    if (this.gwProcessing) return;
+    this.showGateway = false;
+    document.documentElement.style.overflow = '';
+    document.body.style.overflow = '';
+    if (this.gwDone) { this.loadAll(); }
+  }
+
+  confirmPayment() {
+    this.gwError = '';
+    if (this.gwMethod === 'card') {
+      const raw = this.card.number.replace(/\s/g, '');
+      const l = this.languageService.lang;
+      if (raw.length < 16) { this.gwError = l === 'en' ? 'Card number must be 16 digits' : 'กรุณากรอกหมายเลขบัตร 16 หลัก'; return; }
+      if (!this.card.name.trim()) { this.gwError = l === 'en' ? 'Cardholder name is required' : 'กรุณากรอกชื่อบนบัตร'; return; }
+      if (this.card.expiry.length < 5) { this.gwError = l === 'en' ? 'Expiry date is required (MM/YY)' : 'กรุณากรอกวันหมดอายุบัตร (MM/YY)'; return; }
+      if (this.card.cvv.length < 3) { this.gwError = l === 'en' ? 'CVV is required' : 'กรุณากรอก CVV'; return; }
     }
-    get unpaidFines() { return this.borrows.filter(b => (b.fine_amount || 0) > 0 && !b.fine_paid); }
-    get totalUnpaidFine() { return this.unpaidFines.reduce((s, b) => s + (b.fine_amount || 0), 0); }
 
-    get displayCardNum(): string {
-        const raw = this.card.number.replace(/\s/g, '');
-        const groups: string[] = raw.match(/.{1,4}/g) || [];
-        while (groups.length < 4) groups.push('\u2022\u2022\u2022\u2022');
-        return groups.map((g, i) => i < 3 ? g.padEnd(4, '\u2022') : g).join(' ');
-    }
+    this.gwProcessing = true;
+    this.procStep = 0;
 
-    ngOnInit() {
-        if (!this.authService.isLoggedIn) { this.router.navigate(['/login']); return; }
-        this.loadAll();
-
-        // Listen for realtime updates
-        this.realtime.messages$.subscribe((msg: RealtimeMessage) => {
-            if (msg.event === 'WALLET_UPDATED' && this.wallet) {
-                console.log('[Wallet] Realtime balance update:', msg.payload.balance);
-                this.wallet.balance = msg.payload.balance;
-                this.loadTransactions(); // Refresh history too
-
-                // If we are in success screen, this might have already updated, 
-                // but this ensures consistency even if updated from another tab.
+    // Simulate 3-step gateway processing
+    setTimeout(() => { this.procStep = 1; }, 900);
+    setTimeout(() => { this.procStep = 2; }, 1800);
+    setTimeout(() => {
+      // Call real API
+      this.walletService.topUp(this.topUpAmount).subscribe({
+        next: (r: any) => {
+          this.procStep = 3;
+          setTimeout(() => {
+            this.gwProcessing = false;
+            if (r.success && r.data) {
+              if (this.wallet) this.wallet.balance = r.data.balance;
+              this.gwPaid = this.topUpAmount;
+              this.gwRef = 'LPG-' + Date.now().toString(36).toUpperCase();
+              this.gwDone = true;
+            } else {
+              this.gwError = r.message || this.languageService.translate('wallet.error.generic');
             }
-        });
-    }
+          }, 500);
+        },
+        error: (err: any) => {
+          this.gwProcessing = false;
+          this.gwError = err?.error?.message || this.languageService.translate('wallet.error.connection');
+        }
+      });
+    }, 2700);
+  }
 
-    loadAll() {
-        this.loading = true;
-        this.walletService.getWallet().subscribe(r => { if (r.data) this.wallet = r.data; });
-        this.walletService.getTransactions().subscribe(r => { if (r.data) this.transactions = r.data; this.loading = false; });
-        this.bookService.myBorrows().subscribe(r => { if (r.data) this.borrows = r.data; });
-    }
+  goBack() {
+    this.location.back();
+  }
 
-    openGateway() {
-        if (!this.topUpAmount || this.topUpAmount <= 0) return;
-        if (this.topUpAmount > 100000) return;
-        this.gwMethod = 'card';
-        this.gwError = '';
-        this.gwDone = false;
-        this.gwProcessing = false;
-        this.gwPaid = 0;
-        this.gwRef = '';
-        this.procStep = 0;
-        this.card = { number: '', name: '', expiry: '', cvv: '' };
-        this.showGateway = true;
-        this.showCardBack = false;
-        document.body.style.overflow = 'hidden';
-    }
+  imgErr(e: any) {
+    e.target.src = this.fallback;
+  }
 
-    closeGateway(e: MouseEvent | null) {
-        if (this.gwProcessing) return;
-        this.showGateway = false;
-        document.body.style.overflow = '';
-        if (this.gwDone) { this.loadAll(); }
-    }
+  fmtCard(v: string) {
+    const d = v.replace(/\D/g, '').slice(0, 16);
+    this.card.number = d.replace(/(.{4})/g, '$1 ').trim();
+  }
 
-    confirmPayment() {
-        this.gwError = '';
-        if (this.gwMethod === 'card') {
-            const raw = this.card.number.replace(/\s/g, '');
-            if (raw.length < 16) { this.gwError = 'กรุณากรอกหมายเลขบัตร 16 หลัก'; return; }
-            if (!this.card.name.trim()) { this.gwError = 'กรุณากรอกชื่อบนบัตร'; return; }
-            if (this.card.expiry.length < 5) { this.gwError = 'กรุณากรอกวันหมดอายุบัตร (MM/YY)'; return; }
-            if (this.card.cvv.length < 3) { this.gwError = 'กรุณากรอก CVV'; return; }
+  fmtExpiry(v: string) {
+    const d = v.replace(/\D/g, '').slice(0, 4);
+    this.card.expiry = d.length > 2 ? d.slice(0, 2) + '/' + d.slice(2) : d;
+  }
+
+  payFine(borrow: Borrow) {
+    this.fineError = '';
+    this.fineSuccess = '';
+    if (!this.wallet || this.wallet.balance < borrow.fine_amount) {
+      this.fineError = this.languageService.translate('wallet.error.insufficient')
+        .replace('{{balance}}', this.wallet?.balance.toFixed(2) ?? '0.00')
+        .replace('{{amount}}', borrow.fine_amount.toFixed(2));
+      return;
+    }
+    this.payingFineId = borrow.id;
+    this.walletService.payFine(borrow.id).subscribe({
+      next: (r) => {
+        this.payingFineId = null;
+        if (r.success && r.data) {
+          if (this.wallet) this.wallet.balance = r.data.new_balance;
+          borrow.fine_paid = true;
+          this.fineSuccess = r.data.message;
+          setTimeout(() => this.fineSuccess = '', 3000);
+          this.loadTransactions();
+        } else {
+          this.fineError = r.message || this.languageService.translate('wallet.error.generic');
+        }
+      },
+      error: (err) => {
+        this.payingFineId = null;
+        this.fineError = err?.error?.message || this.languageService.translate('wallet.error.generic');
+      }
+    });
+  }
+
+  loadTransactions() {
+    this.walletService.getTransactions().subscribe(r => { if (r.data) this.transactions = r.data; });
+  }
+
+  daysOverdue(due: string): number {
+    return Math.max(0, Math.floor((Date.now() - new Date(due).getTime()) / 86400000));
+  }
+
+  fmtDate(d: string): string {
+    const l = this.languageService.lang;
+    return new Date(d).toLocaleString(l === 'th' ? 'th-TH' : 'en-GB', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+
+  getTxDesc(desc: string): string {
+    if (!desc) return '';
+    const l = this.languageService.lang;
+
+    // Mapping patterns to translation keys
+    const patterns = [
+      { key: 'wallet.history.topup', match: /Top-up|เติมเงิน/i },
+      { key: 'wallet.history.debt_settlement', match: /Automatic Debt Settlement|หักหนี้ค้างชำระอัตโนมัติ|Automated Fine Payment|ชำระค่าปรับค้างจ่าย/i },
+      { key: 'wallet.history.fine_payment', match: /Fine Payment|จ่ายค่าปรับ|Fine Deduction|หักค่าปรับ/i },
+      { key: 'wallet.history.borrow_fee', match: /Borrow Fee|ค่ายืมหนังสือ/i },
+      { key: 'wallet.history.overdue_fine', match: /Overdue Fine|ค่าปรับเกินกำหนด/i }
+    ];
+
+    for (const p of patterns) {
+      if (p.match.test(desc)) {
+        // Extract extra info (like book title or amount)
+        let extra = '';
+        if (desc.includes(' — ')) {
+          extra = desc.split(' — ')[1];
+        } else if (desc.includes('฿')) {
+          // Maybe it has amount, but we usually want the title
         }
 
-        this.gwProcessing = true;
-        this.procStep = 0;
-
-        // Simulate 3-step gateway processing
-        setTimeout(() => { this.procStep = 1; }, 900);
-        setTimeout(() => { this.procStep = 2; }, 1800);
-        setTimeout(() => {
-            // Call real API
-            this.walletService.topUp(this.topUpAmount).subscribe({
-                next: (r) => {
-                    this.procStep = 3;
-                    setTimeout(() => {
-                        this.gwProcessing = false;
-                        if (r.success && r.data) {
-                            if (this.wallet) this.wallet.balance = r.data.balance;
-                            this.gwPaid = this.topUpAmount;
-                            this.gwRef = 'LPG-' + Date.now().toString(36).toUpperCase();
-                            this.gwDone = true;
-                        } else {
-                            this.gwError = r.message || 'เกิดข้อผิดพลาด';
-                            this.gwProcessing = false;
-                        }
-                    }, 500);
-                },
-                error: (err) => {
-                    this.gwProcessing = false;
-                    this.gwError = err?.error?.message || 'ไม่สามารถเชื่อมต่อได้ กรุณาลองใหม่';
-                }
-            });
-        }, 2700);
+        const translated = this.languageService.translate(p.key);
+        return extra ? `${translated} — ${extra}` : translated;
+      }
     }
 
-    fmtCard(v: string) {
-        const d = v.replace(/\D/g, '').slice(0, 16);
-        this.card.number = d.replace(/(.{4})/g, '$1 ').trim();
-    }
-
-    fmtExpiry(v: string) {
-        const d = v.replace(/\D/g, '').slice(0, 4);
-        this.card.expiry = d.length > 2 ? d.slice(0, 2) + '/' + d.slice(2) : d;
-    }
-
-    payFine(borrow: Borrow) {
-        this.fineError = '';
-        this.fineSuccess = '';
-        if (!this.wallet || this.wallet.balance < borrow.fine_amount) {
-            this.fineError = `ยอดใน Wallet ไม่พอ มี ฿${this.wallet?.balance.toFixed(2) ?? '0.00'} ต้องการ ฿${borrow.fine_amount.toFixed(2)}`;
-            return;
-        }
-        this.payingFineId = borrow.id;
-        this.walletService.payFine(borrow.id).subscribe({
-            next: (r) => {
-                this.payingFineId = null;
-                if (r.success && r.data) {
-                    if (this.wallet) this.wallet.balance = r.data.new_balance;
-                    borrow.fine_paid = true;
-                    this.fineSuccess = r.data.message;
-                    setTimeout(() => this.fineSuccess = '', 3000);
-                    this.loadTransactions();
-                } else {
-                    this.fineError = r.message || 'เกิดข้อผิดพลาด';
-                }
-            },
-            error: (err) => {
-                this.payingFineId = null;
-                this.fineError = err?.error?.message || 'เกิดข้อผิดพลาด';
-            }
-        });
-    }
-
-    loadTransactions() {
-        this.walletService.getTransactions().subscribe(r => { if (r.data) this.transactions = r.data; });
-    }
-
-    daysOverdue(due: string): number {
-        return Math.max(0, Math.floor((Date.now() - new Date(due).getTime()) / 86400000));
-    }
-
-    fmtDate(d: string): string {
-        return new Date(d).toLocaleString('th-TH', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-    }
+    return desc;
+  }
 }

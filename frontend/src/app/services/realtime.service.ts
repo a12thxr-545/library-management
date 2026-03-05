@@ -59,6 +59,14 @@ export class RealtimeService implements OnDestroy {
         };
     }
 
+    public send(msg: RealtimeMessage) {
+        if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+            this.socket.send(JSON.stringify(msg));
+        } else {
+            console.warn('[Realtime] Cannot send, socket not connected');
+        }
+    }
+
     private disconnect() {
         if (this.socket) {
             this.socket.close();

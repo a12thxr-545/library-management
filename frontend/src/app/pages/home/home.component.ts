@@ -1,48 +1,60 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink, Router } from '@angular/router';
 import { BookService } from '../../services/book.service';
 import { CategoryService } from '../../services/category.service';
 import { AuthService } from '../../services/auth.service';
+import { RealtimeService } from '../../services/realtime.service';
 import { Book, Category } from '../../models';
+import { Subscription } from 'rxjs';
 
 import { InterestService } from '../../services/interest.service';
+import { TranslatePipe } from '../../pipes/translate.pipe';
+import { LoadingService } from '../../services/loading.service';
+import { LanguageService } from '../../services/language.service';
+
 @Component({
   selector: 'app-home',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink, TranslatePipe],
   template: `
     <div class="page">
       <!-- Welcome & Search -->
       <div class="hero">
-        <h1>Simplify your reading journey</h1>
+        <h1>{{ 'home.welcome' | t }}</h1>
         <div class="search-bar">
           <div class="input-group">
             <i class="material-icons">search</i>
-            <input [(ngModel)]="search" (keyup.enter)="goSearch()" placeholder="Find books, authors, or categories..." />
+            <input [(ngModel)]="search" (keyup.enter)="goSearch()" [placeholder]="'home.search_placeholder' | t" />
           </div>
-          <button class="search-btn" (click)="goSearch()">Search</button>
+          <button class="search-btn" (click)="goSearch()">{{ langService.lang === 'th' ? 'ค้นหา' : 'Search' }}</button>
         </div>
       </div>
 
       <!-- Stats row -->
-      <div class="stats-grid">
-        <div class="stat-card"><strong>{{ totalBooks }}</strong><span>Books available</span></div>
-        <div class="stat-card"><strong>{{ categories.length }}</strong><span>Categories</span></div>
-        <div class="stat-card"><strong>{{ loanDays }}</strong><span>Day borrowing</span></div>
+      <div class="stats-grid" *ngIf="!(loadingService.loading$ | async); else statsSkeleton">
+        <div class="stat-card"><strong>{{ totalBooks }}</strong><span>{{ 'home.stats.books' | t }}</span></div>
+        <div class="stat-card"><strong>{{ categories.length }}</strong><span>{{ 'home.stats.categories' | t }}</span></div>
+        <div class="stat-card"><strong>{{ loanDays }}</strong><span>{{ 'home.stats.days' | t }}</span></div>
       </div>
+      <ng-template #statsSkeleton>
+        <div class="stats-grid">
+          <div class="stat-card" *ngFor="let s of [1,2,3]"><div class="skeleton" style="height: 30px; width: 60px; margin: 0 auto 8px;"></div><div class="skeleton" style="height: 14px; width: 80px; margin: 0 auto;"></div></div>
+        </div>
+      </ng-template>
 
-      <!-- Recommended for You (Based on interests) -->
-      <section class="recommended-section" *ngIf="recommendedBooks.length > 0">
+      <!-- Recommended for You -->
+      <section class="recommended-section" *ngIf="(loadingService.loading$ | async) || recommendedBooks.length > 0">
         <div class="section-header">
           <div class="title-with-subtitle">
-            <h2>Recommended for You</h2>
-            <p>Based on your interests</p>
+            <h2>{{ 'home.recommended' | t }}</h2>
+            <p>{{ 'home.based_on_interests' | t }}</p>
           </div>
-          <a routerLink="/interests" class="link-settings"><i class="material-icons">settings</i> Update Interests</a>
+          <a routerLink="/interests" class="link-settings" *ngIf="!(loadingService.loading$ | async)"><i class="material-icons">settings</i> {{ 'home.update_interests' | t }}</a>
         </div>
-        <div class="book-grid">
+        
+        <div class="book-grid" *ngIf="!(loadingService.loading$ | async); else bookGridSkeleton">
           <div class="book-card highlight" *ngFor="let b of recommendedBooks" [routerLink]="['/books', b.id]">
             <div class="cover-wrap">
               <img [src]="b.cover_url || fallback" [alt]="b.title" (error)="imgErr($event)" />
@@ -59,17 +71,17 @@ import { InterestService } from '../../services/interest.service';
       <!-- New Books -->
       <section>
         <div class="section-header">
-          <h2>New Arrivals</h2>
-          <a routerLink="/books" class="link-all">View All <i class="material-icons">chevron_right</i></a>
+          <h2>{{ 'home.new_arrivals' | t }}</h2>
+          <a routerLink="/books" class="link-all" *ngIf="!(loadingService.loading$ | async)">{{ 'home.view_all' | t }} <i class="material-icons">chevron_right</i></a>
         </div>
-        <div class="book-grid">
+        <div class="book-grid" *ngIf="!(loadingService.loading$ | async); else bookGridSkeleton">
           <div class="book-card" *ngFor="let b of newBooks" [routerLink]="['/books', b.id]">
             <div class="cover-wrap"><img [src]="b.cover_url || fallback" [alt]="b.title" (error)="imgErr($event)" /></div>
             <div class="info-wrap">
               <div class="info-title">{{ b.title }}</div>
               <div class="info-author">{{ b.author }}</div>
               <span class="info-badge" [class.danger]="b.available_copies === 0">
-                {{ b.available_copies > 0 ? (b.available_copies + ' available') : 'Borrowed' }}
+                {{ b.available_copies > 0 ? (b.available_copies + ' ' + ('book.available' | t)) : ('book.unavailable' | t) }}
               </span>
             </div>
           </div>
@@ -79,16 +91,16 @@ import { InterestService } from '../../services/interest.service';
       <!-- Popular Books -->
       <section>
         <div class="section-header">
-          <h2>Most Popular</h2>
-          <a routerLink="/books" class="link-all">View All <i class="material-icons">chevron_right</i></a>
+          <h2>{{ 'home.most_popular' | t }}</h2>
+          <a routerLink="/books" class="link-all" *ngIf="!(loadingService.loading$ | async)">{{ 'home.view_all' | t }} <i class="material-icons">chevron_right</i></a>
         </div>
-        <div class="book-grid">
+        <div class="book-grid" *ngIf="!(loadingService.loading$ | async); else bookGridSkeleton">
           <div class="book-card" *ngFor="let b of popularBooks" [routerLink]="['/books', b.id]">
             <div class="cover-wrap"><img [src]="b.cover_url || fallback" [alt]="b.title" (error)="imgErr($event)" /></div>
             <div class="info-wrap">
               <div class="info-title">{{ b.title }}</div>
               <div class="info-author">{{ b.author }}</div>
-              <span class="info-badge">{{ b.borrow_count }} borrows</span>
+              <span class="info-badge">{{ b.borrow_count }} {{ 'book.borrows' | t }}</span>
             </div>
           </div>
         </div>
@@ -96,13 +108,30 @@ import { InterestService } from '../../services/interest.service';
 
       <!-- Explore Categories -->
       <section>
-        <div class="section-header"><h2>Explore Topics</h2></div>
-        <div class="category-list">
+        <div class="section-header"><h2>{{ 'nav.categories' | t }}</h2></div>
+        <div class="category-list" *ngIf="!(loadingService.loading$ | async); else categoriesSkeleton">
           <a class="topic-chip" *ngFor="let c of categories" [routerLink]="['/categories']" [queryParams]="{selected: c.id}">
              {{ c.name }} <small>({{ c.book_count }})</small>
           </a>
         </div>
+        <ng-template #categoriesSkeleton>
+          <div class="category-list">
+            <div class="skeleton" *ngFor="let s of [1,2,3,4,5,6]" style="height: 38px; width: 100px; border-radius: 30px;"></div>
+          </div>
+        </ng-template>
       </section>
+
+      <ng-template #bookGridSkeleton>
+        <div class="book-grid">
+          <div class="book-card" *ngFor="let s of [1,2,3,4,5,6]">
+            <div class="skeleton" style="aspect-ratio: 2/3; width: 100%;"></div>
+            <div class="info-wrap">
+              <div class="skeleton" style="height: 18px; width: 80%; margin-bottom: 8px;"></div>
+              <div class="skeleton" style="height: 14px; width: 60%;"></div>
+            </div>
+          </div>
+        </div>
+      </ng-template>
     </div>
   `,
   styles: [`
@@ -125,9 +154,9 @@ import { InterestService } from '../../services/interest.service';
       outline: none; width: 100%; font-family: inherit;
     }
     .search-btn {
-      background: var(--accent); color: white; border: none; padding: 0 24px;
+      background: var(--accent); color: white; border: none; padding: 0 32px;
       border-radius: 16px; font-weight: 700; font-family: inherit; cursor: pointer;
-      transition: transform 0.1s, opacity 0.2s;
+      transition: transform 0.1s, opacity 0.2s; white-space: nowrap;
     }
     .search-btn:hover { opacity: 0.95; transform: translateY(-1px); }
     .search-btn:active { transform: translateY(0); }
@@ -203,15 +232,21 @@ import { InterestService } from '../../services/interest.service';
     @media (max-width: 640px) {
       .page { padding: 24px 16px; }
       .hero h1 { font-size: 1.4rem; }
-      .search-bar { flex-direction: column; }
-      .search-btn { padding: 14px; }
+      .search-bar { flex-direction: column; gap: 10px; }
+      .input-group { width: 100%; }
+      .search-btn { padding: 12px; width: 100%; border-radius: 12px; }
       .stats-grid { grid-template-columns: 1fr; gap: 12px; }
       .book-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
       .info-title { font-size: 0.9rem; }
+      .info-wrap { padding: 12px; }
+    }
+
+    @media (min-width: 641px) and (max-width: 1024px) {
+      .book-grid { grid-template-columns: repeat(4, 1fr); }
     }
   `]
 })
-export class HomeComponent implements OnInit {
+export class HomeComponent implements OnInit, OnDestroy {
   newBooks: Book[] = []; popularBooks: Book[] = []; categories: Category[] = [];
   recommendedBooks: Book[] = [];
   search = ''; totalBooks = 0;
@@ -222,18 +257,47 @@ export class HomeComponent implements OnInit {
     <rect x="40" y="65" width="80" height="10" rx="5" fill="%23414868" opacity="0.5"/>
     <path d="M20 20v260c0 11 9 20 20 20h10V20c0-11-9-20-20-20z" fill="%2316161e"/>
   </svg>`;
+  private sub: Subscription | null = null;
 
   constructor(
     private bookService: BookService,
     private categoryService: CategoryService,
     private interestService: InterestService,
     public authService: AuthService,
+    public loadingService: LoadingService,
+    public langService: LanguageService,
+    private realtime: RealtimeService,
     private router: Router
   ) { }
 
   get loanDays() { return this.authService.currentUser?.role === 'professor' ? 30 : 14; }
 
   ngOnInit() {
+    this.fetchData();
+
+    // Listen for realtime updates
+    this.sub = this.realtime.messages$.subscribe(msg => {
+      const events = ['BOOK_STOCK_UPDATED', 'BORROW_CREATED', 'BORROW_RETURNED', 'BORROW_UPDATED'];
+      if (events.includes(msg.event)) {
+        console.log('[Home] Realtime update:', msg.event);
+        this.fetchData();
+      }
+    });
+
+    this.routeSearch();
+  }
+
+  ngOnDestroy() {
+    if (this.sub) this.sub.unsubscribe();
+  }
+
+  private routeSearch() {
+    this.router.events.subscribe(() => {
+      // Handle initial search params if needed, but home search is usually manual
+    });
+  }
+
+  fetchData() {
     this.bookService.getNewBooks().subscribe(r => { if (r.data) this.newBooks = r.data.slice(0, 6); });
     this.bookService.getPopularBooks().subscribe(r => { if (r.data) this.popularBooks = r.data.slice(0, 6); });
     this.categoryService.getCategories().subscribe(r => { if (r.data) this.categories = r.data; });

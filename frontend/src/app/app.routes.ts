@@ -15,6 +15,7 @@ export const routes: Routes = [
     { path: 'wallet', loadComponent: () => import('./pages/wallet/wallet.component').then(m => m.WalletComponent), canActivate: [authGuard] },
     { path: 'payment', loadComponent: () => import('./pages/payment/payment.component').then(m => m.PaymentComponent), canActivate: [authGuard] },
     { path: 'admin/borrows', loadComponent: () => import('./pages/admin/admin-borrows.component').then(m => m.AdminBorrowsComponent), canActivate: [authGuard] },
+    { path: 'admin/inventory', loadComponent: () => import('./pages/admin/admin-inventory.component').then(m => m.AdminInventoryComponent), canActivate: [authGuard] },
     { path: 'admin/users', loadComponent: () => import('./pages/admin/admin-users.component').then(m => m.AdminUsersComponent), canActivate: [authGuard] },
     { path: 'error', loadComponent: () => import('./pages/errors/server-error/server-error.component').then(m => m.ServerErrorComponent) },
     { path: '**', loadComponent: () => import('./pages/errors/not-found/not-found.component').then(m => m.NotFoundComponent) },

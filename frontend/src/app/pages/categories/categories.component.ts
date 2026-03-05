@@ -1,18 +1,29 @@
-import { Component, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, OnInit, OnDestroy } from '@angular/core';
+import { CommonModule, Location } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { CategoryService } from '../../services/category.service';
+import { RealtimeService } from '../../services/realtime.service';
 import { Category, Book } from '../../models';
+import { Subscription } from 'rxjs';
+
+import { TranslatePipe } from '../../pipes/translate.pipe';
+import { LoadingService } from '../../services/loading.service';
 
 @Component({
   selector: 'app-categories',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, RouterLink, TranslatePipe],
   template: `
     <div class="page">
+      <div class="top-nav">
+        <a (click)="goBack()" class="back-btn">
+          <i class="material-icons">arrow_back</i>
+          <span>{{ 'common.return' | t }}</span>
+        </a>
+      </div>
       <!-- Sticky tab bar -->
       <div class="tab-bar">
-        <div class="tab-scroll">
+        <div class="tab-scroll" *ngIf="!(loadingService.loading$ | async); else catSkeleton">
           <button
             class="tab-item"
             *ngFor="let c of categories"
@@ -22,47 +33,71 @@ import { Category, Book } from '../../models';
             <span class="count">{{ c.book_count }}</span>
           </button>
         </div>
+        <ng-template #catSkeleton>
+          <div class="tab-scroll">
+            <div class="skeleton" *ngFor="let s of [1,2,3,4]" style="height: 30px; width: 100px; margin: 15px; border-radius: 20px;"></div>
+          </div>
+        </ng-template>
       </div>
 
       <!-- Selected category info + books -->
-      <div class="content" *ngIf="selected">
-        <div class="cat-header">
+      <div class="content">
+        <div class="cat-header" *ngIf="selected">
           <div>
             <h1 class="cat-name">{{ selected.name }}</h1>
             <p class="cat-desc" *ngIf="selected.description">{{ selected.description }}</p>
           </div>
-          <span class="total-badge">{{ selected.book_count }} books</span>
+          <span class="total-badge">{{ selected.book_count }} {{ 'nav.books' | t }}</span>
         </div>
 
-        <div class="loading-row" *ngIf="loading">Loading...</div>
-
-        <div class="books-grid" *ngIf="!loading">
-          <div class="book-row" *ngFor="let b of books" [routerLink]="['/books', b.id]">
-            <img [src]="b.cover_url || fallback" [alt]="b.title" (error)="imgErr($event)" />
-            <div class="bi">
-              <div class="bi-title">{{ b.title }}</div>
-              <div class="bi-author">{{ b.author }}</div>
+        <div class="books-grid">
+          <ng-container *ngIf="!(loadingService.loading$ | async) && selected; else booksSkeleton">
+            <div class="book-row" *ngFor="let b of books" [routerLink]="['/books', b.id]">
+              <img [src]="b.cover_url || fallback" [alt]="b.title" (error)="imgErr($event)" />
+              <div class="bi">
+                <div class="bi-title">{{ b.title }}</div>
+                <div class="bi-author">{{ b.author }}</div>
+              </div>
+              <span class="avail" [class.red]="b.available_copies === 0">
+                {{ b.available_copies > 0 ? b.available_copies + ' ' + ('book.available' | t) : ('book.unavailable' | t) }}
+              </span>
             </div>
-            <span class="avail" [class.red]="b.available_copies === 0">
-              {{ b.available_copies > 0 ? b.available_copies + ' avail.' : 'Unavailable' }}
-            </span>
-          </div>
 
-          <div class="empty" *ngIf="books.length === 0">
-            No books in this category
-          </div>
+            <div class="empty" *ngIf="books.length === 0">
+              {{ 'common.no_records' | t }}
+            </div>
+          </ng-container>
+
+          <ng-template #booksSkeleton>
+            <div class="book-row" *ngFor="let s of [1,2,3,4,5]">
+              <div class="skeleton" style="width: 36px; height: 50px; border-radius: 4px;"></div>
+              <div class="bi">
+                <div class="skeleton" style="height: 14px; width: 60%; margin-bottom: 6px;"></div>
+                <div class="skeleton" style="height: 10px; width: 40%;"></div>
+              </div>
+              <div class="skeleton" style="height: 20px; width: 60px; border-radius: 4px;"></div>
+            </div>
+          </ng-template>
         </div>
       </div>
 
       <!-- Default state (nothing selected) -->
       <div class="empty-state" *ngIf="!selected && categories.length > 0">
         <i class="material-icons">book</i>
-        <p>Select a category above</p>
+        <p>{{ 'home.search_placeholder' | t }}</p>
       </div>
     </div>
   `,
   styles: [`
-    .page { max-width: 800px; margin: 0 auto; padding-top: 0; }
+    .page { max-width: 800px; margin: 0 auto; padding: 12px 20px 28px; }
+    .top-nav { margin-bottom: 16px; display: flex; align-items: center; }
+    .back-btn { 
+      display: flex; align-items: center; gap: 8px; color: var(--text2); 
+      cursor: pointer; text-decoration: none; font-size: 0.85rem; font-weight: 600;
+      padding: 6px 12px; border-radius: 8px; transition: all 0.2s;
+    }
+    .back-btn:hover { background: var(--bg2); color: var(--text); }
+    .back-btn i { font-size: 1.1rem; }
 
     /* Sticky tab bar */
     .tab-bar {
@@ -139,11 +174,12 @@ import { Category, Book } from '../../models';
     }
   `]
 })
-export class CategoriesComponent implements OnInit {
+export class CategoriesComponent implements OnInit, OnDestroy {
   categories: Category[] = [];
   selected: Category | null = null;
   books: Book[] = [];
   loading = false;
+  private sub: Subscription | null = null;
   fallback = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300" viewBox="0 0 200 300">
     <rect width="200" height="300" fill="%231a1b26"/>
     <path d="M40 0h140a20 20 0 0 1 20 20v260a20 20 0 0 1-20 20H40a20 20 0 0 1-20-20V20A20 20 0 0 1 40 0z" fill="%2324283b"/>
@@ -152,14 +188,37 @@ export class CategoriesComponent implements OnInit {
     <path d="M20 20v260c0 11 9 20 20 20h10V20c0-11-9-20-20-20z" fill="%2316161e"/>
   </svg>`;
 
-  constructor(private categoryService: CategoryService) { }
+  constructor(
+    private categoryService: CategoryService,
+    private realtime: RealtimeService,
+    public loadingService: LoadingService,
+    private location: Location
+  ) { }
 
   ngOnInit() {
+    this.fetchCategories(true);
+
+    // Listen for realtime updates
+    this.sub = this.realtime.messages$.subscribe(msg => {
+      const events = ['BOOK_STOCK_UPDATED', 'BORROW_CREATED', 'BORROW_RETURNED', 'BORROW_UPDATED'];
+      if (events.includes(msg.event)) {
+        this.fetchCategories(false);
+        if (this.selected) {
+          this.refreshBooks();
+        }
+      }
+    });
+  }
+
+  ngOnDestroy() {
+    if (this.sub) this.sub.unsubscribe();
+  }
+
+  fetchCategories(autoSelect: boolean) {
     this.categoryService.getCategories().subscribe(r => {
       if (r.data) {
         this.categories = r.data;
-        // Auto-select first category
-        if (this.categories.length > 0) {
+        if (autoSelect && this.categories.length > 0) {
           this.select(this.categories[0]);
         }
       }
@@ -178,4 +237,12 @@ export class CategoriesComponent implements OnInit {
   }
 
   imgErr(e: any) { e.target.src = this.fallback; }
+  goBack() { this.location.back(); }
+
+  private refreshBooks() {
+    if (!this.selected) return;
+    this.categoryService.getBooksByCategory(this.selected.id).subscribe(r => {
+      this.books = r.data || [];
+    });
+  }
 }

@@ -1,47 +1,72 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { BookService } from '../../services/book.service';
+import { RealtimeService } from '../../services/realtime.service';
 import { Borrow } from '../../models';
+import { Subscription } from 'rxjs';
+import { TranslatePipe } from '../../pipes/translate.pipe';
+import { Location } from '@angular/common';
+import { LoadingService } from '../../services/loading.service';
 
 @Component({
-    selector: 'app-admin-borrows',
-    standalone: true,
-    imports: [CommonModule],
-    template: `
+  selector: 'app-admin-borrows',
+  standalone: true,
+  imports: [CommonModule, TranslatePipe],
+  template: `
     <div class="page">
       <div class="header">
-        <h1>Management: Borrowing Records</h1>
-        <p>Monitor all active and past book loans across the library</p>
+        <a (click)="goBack()" class="back-btn"><i class="material-icons">arrow_back</i> {{ 'common.return' | t }}</a>
+        <h1>{{ 'admin.borrows.title' | t }}</h1>
+        <p>{{ 'admin.borrows.sub' | t }}</p>
       </div>
 
-      <div class="stats-row">
-        <div class="stat-box">
+      <div class="stats-row" *ngIf="!(loadingService.loading$ | async); else statsSkeleton">
+        <div class="stat-box clickable" (click)="filter = 'active'" [class.active-stat]="filter === 'active'">
           <span class="val">{{ activeCount }}</span>
-          <span class="lbl">Active Loans</span>
+          <span class="lbl">{{ 'admin.borrows.active' | t }}</span>
         </div>
-        <div class="stat-box">
+        <div class="stat-box clickable" (click)="filter = 'overdue'" [class.active-stat]="filter === 'overdue'">
           <span class="val">{{ overdueCount }}</span>
-          <span class="lbl danger">Overdue</span>
+          <span class="lbl danger">{{ 'common.overdue' | t }}</span>
         </div>
+        <div class="stat-box clickable" (click)="filter = 'all'" [class.active-stat]="filter === 'all'">
+          <span class="val">{{ borrows.length }}</span>
+          <span class="lbl">{{ 'admin.borrows.all' | t }}</span>
+        </div>
+      </div>
+      <ng-template #statsSkeleton>
+        <div class="stats-row">
+          <div class="stat-box" *ngFor="let s of [1,2,3]">
+             <div class="skeleton" style="height: 32px; width: 40px; margin-bottom: 8px;"></div>
+             <div class="skeleton" style="height: 14px; width: 80px;"></div>
+          </div>
+        </div>
+      </ng-template>
+
+      <div class="filter-bar">
+        <button class="filter-btn" [class.active]="filter === 'all'" (click)="filter = 'all'">{{ 'common.all' | t }}</button>
+        <button class="filter-btn" [class.active]="filter === 'active'" (click)="filter = 'active'">{{ 'admin.borrows.active' | t }}</button>
+        <button class="filter-btn" [class.active]="filter === 'overdue'" (click)="filter = 'overdue'">{{ 'common.overdue' | t }}</button>
+        <button class="filter-btn" [class.active]="filter === 'returned'" (click)="filter = 'returned'">{{ 'common.returned' | t }}</button>
       </div>
 
       <div class="table-container">
-        <table *ngIf="borrows.length > 0">
+        <table *ngIf="filteredBorrows.length > 0 || (loadingService.loading$ | async)">
           <thead>
             <tr>
-              <th>Borrower</th>
-              <th>Book Details</th>
-              <th>Borrowed At</th>
-              <th>Due Date</th>
-              <th>Status</th>
-              <th>Fines</th>
+               <th>{{ 'nav.members' | t }}</th>
+              <th>{{ 'book.details' | t }}</th>
+              <th>{{ 'book.borrowed' | t }}</th>
+              <th>{{ 'book.return_date' | t }}</th>
+              <th>{{ 'common.status' | t }}</th>
+              <th>{{ 'wallet.fines' | t }}</th>
             </tr>
           </thead>
-          <tbody>
-            <tr *ngFor="let b of borrows">
+          <tbody *ngIf="!(loadingService.loading$ | async); else borrowsSkeleton">
+            <tr *ngFor="let b of filteredBorrows">
               <td>
                 <div class="user-info">
-                  <span class="name">{{ b.user_full_name || 'Anonymous' }}</span>
+                  <span class="name">{{ b.user_full_name || ('common.anonymous' | t) }}</span>
                   <span class="username">@{{ b.username }}</span>
                 </div>
               </td>
@@ -58,39 +83,60 @@ import { Borrow } from '../../models';
                 </span>
               </td>
               <td>
-                <span class="badge" [class]="b.status">{{ b.status }}</span>
+                <span class="badge" [class]="b.status">{{ ('common.' + b.status) | t }}</span>
               </td>
               <td>
-                <span *ngIf="b.fine_amount > 0" class="fine">
-                  ฿{{ b.fine_amount }} <small>({{ b.fine_paid ? 'Paid' : 'Unpaid' }})</small>
+               <span *ngIf="b.fine_amount > 0" class="fine">
+                  ฿{{ b.fine_amount }} <small>({{ b.fine_paid ? (('nav.payment' | t) + ' ' + ('common.returned' | t)) : ('profile.debt' | t) }})</small>
                 </span>
                 <span *ngIf="b.fine_amount === 0" class="no-fine">-</span>
               </td>
             </tr>
           </tbody>
+          <ng-template #borrowsSkeleton>
+            <tbody>
+              <tr *ngFor="let s of [1,2,3,4,5]">
+                <td><div class="user-info"><div class="skeleton" style="height: 16px; width: 120px; margin-bottom: 6px;"></div><div class="skeleton" style="height: 12px; width: 80px;"></div></div></td>
+                <td><div class="book-info"><div class="skeleton" style="width: 40px; height: 60px; border-radius: 4px;"></div><div class="skeleton" style="height: 16px; width: 140px;"></div></div></td>
+                <td><div class="skeleton" style="height: 14px; width: 80px;"></div></td>
+                <td><div class="skeleton" style="height: 14px; width: 80px;"></div></td>
+                <td><div class="skeleton" style="height: 24px; width: 80px; border-radius: 10px;"></div></td>
+                <td><div class="skeleton" style="height: 14px; width: 100px;"></div></td>
+              </tr>
+            </tbody>
+          </ng-template>
         </table>
 
         <div class="empty" *ngIf="borrows.length === 0">
           <i class="material-icons">info_outline</i>
-          <p>No borrowing records found.</p>
+          <p>{{ 'common.no_records' | t }}</p>
         </div>
       </div>
     </div>
   `,
-    styles: [`
+  styles: [`
     .page { max-width: 1200px; margin: 0 auto; padding: 40px 24px; }
-    .header { margin-bottom: 32px; }
+    .header { margin-bottom: 32px; position: relative; }
+    .back-btn { 
+      display: inline-flex; align-items: center; gap: 8px; color: var(--text2); 
+      text-decoration: none; font-weight: 600; margin-bottom: 24px; cursor: pointer;
+    }
     h1 { font-size: 2rem; font-weight: 800; color: var(--text); }
     p { color: var(--text3); }
 
     .stats-row { display: flex; gap: 20px; margin-bottom: 32px; }
-    .stat-box { 
-      background: var(--bg2); border: 1px solid var(--border); 
-      padding: 20px; border-radius: 16px; min-width: 160px;
+    .stat-box.clickable { cursor: pointer; transition: all 0.2s; }
+    .stat-box.clickable:hover { border-color: var(--accent); transform: translateY(-2px); }
+    .stat-box.active-stat { border-color: var(--accent); background: rgba(56,139,253,0.05); }
+
+    .filter-bar { display: flex; gap: 8px; margin-bottom: 20px; }
+    .filter-btn { 
+      padding: 8px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;
+      background: var(--bg2); border: 1px solid var(--border); color: var(--text2); 
+      cursor: pointer; transition: all 0.2s;
     }
-    .stat-box .val { display: block; font-size: 1.8rem; font-weight: 800; color: var(--accent); }
-    .stat-box .lbl { font-size: 0.85rem; color: var(--text3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-    .lbl.danger { color: var(--danger); }
+    .filter-btn:hover { border-color: var(--text3); }
+    .filter-btn.active { background: var(--accent); border-color: var(--accent); color: white; }
 
     .table-container { 
       background: var(--bg2); border: 1px solid var(--border); 
@@ -119,27 +165,83 @@ import { Borrow } from '../../models';
 
     .empty { padding: 60px; text-align: center; color: var(--text3); }
     .empty i { font-size: 3rem; margin-bottom: 12px; }
+
+    @media (max-width: 768px) {
+      .stats-row { flex-direction: column; }
+      .table-container { overflow-x: auto; }
+      table { min-width: 700px; }
+      .filter-bar { overflow-x: auto; padding-bottom: 8px; scrollbar-width: none; }
+      .filter-bar::-webkit-scrollbar { display: none; }
+      .filter-btn { white-space: nowrap; }
+    }
+    @media (max-width: 480px) {
+      .page { padding: 24px 16px; }
+      h1 { font-size: 1.6rem; }
+    }
   `]
 })
-export class AdminBorrowsComponent implements OnInit {
-    borrows: Borrow[] = [];
-    fallback = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="60"><rect width="40" height="60" fill="%2330363d"/></svg>';
+export class AdminBorrowsComponent implements OnInit, OnDestroy {
+  borrows: Borrow[] = [];
+  filter: 'all' | 'active' | 'overdue' | 'returned' = 'all';
+  fallback = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="60"><rect width="40" height="60" fill="%2330363d"/></svg>';
+  private sub: Subscription | null = null;
 
-    constructor(private bookService: BookService) { }
+  constructor(
+    private bookService: BookService,
+    private realtime: RealtimeService,
+    public loadingService: LoadingService,
+    private location: Location
+  ) { }
 
-    ngOnInit() {
-        this.bookService.getAllBorrows().subscribe(r => {
-            this.borrows = r.data || [];
-        });
+  goBack() { this.location.back(); }
+
+  ngOnInit() {
+    this.fetchData();
+
+    // Listen for realtime updates
+    this.sub = this.realtime.messages$.subscribe(msg => {
+      if (msg.event === 'BORROW_CREATED' || msg.event === 'BORROW_RETURNED' || msg.event === 'BORROW_UPDATED') {
+        this.fetchData();
+      }
+    });
+  }
+
+  ngOnDestroy() {
+    if (this.sub) this.sub.unsubscribe();
+  }
+
+  fetchData() {
+    this.bookService.getAllBorrows().subscribe(r => {
+      this.borrows = r.data || [];
+    });
+  }
+
+  get activeCount() {
+    return this.borrows.filter(b => b.status === 'active' && new Date(b.due_date) >= new Date()).length;
+  }
+  get overdueCount() {
+    return this.borrows.filter(b => b.status === 'overdue' || (b.status === 'active' && new Date(b.due_date) < new Date())).length;
+  }
+
+  get filteredBorrows() {
+    const now = new Date();
+    if (this.filter === 'all') return this.borrows;
+    if (this.filter === 'active') {
+      return this.borrows.filter(b => b.status === 'active' && new Date(b.due_date) >= now);
     }
-
-    get activeCount() { return this.borrows.filter(b => b.status === 'active').length; }
-    get overdueCount() { return this.borrows.filter(b => b.status === 'overdue').length; }
-
-    isOverdue(dueDate: string, status: string): boolean {
-        if (status === 'returned') return false;
-        return new Date(dueDate) < new Date();
+    if (this.filter === 'overdue') {
+      return this.borrows.filter(b => b.status === 'overdue' || (b.status === 'active' && new Date(b.due_date) < now));
     }
+    if (this.filter === 'returned') {
+      return this.borrows.filter(b => b.status === 'returned');
+    }
+    return this.borrows;
+  }
 
-    imgErr(e: any) { e.target.src = this.fallback; }
+  isOverdue(dueDate: string, status: string): boolean {
+    if (status === 'returned') return false;
+    return new Date(dueDate) < new Date();
+  }
+
+  imgErr(e: any) { e.target.src = this.fallback; }
 }

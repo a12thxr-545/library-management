@@ -1,5 +1,5 @@
 use crate::{db::DbPool, models::*};
-use actix_web::{web, HttpResponse};
+use actix_web::{web, HttpRequest, HttpResponse};
 use uuid::Uuid;
 
 const BOOK_SELECT: &str = "SELECT b.id, b.title, b.author, b.isbn, b.description, b.cover_url,
@@ -77,8 +77,19 @@ pub async fn get_book(pool: web::Data<DbPool>, path: web::Path<String>) -> HttpR
 
 pub async fn create_book(
     pool: web::Data<DbPool>,
-    req: web::Json<CreateBookRequest>,
+    req: HttpRequest,
+    body: web::Json<CreateBookRequest>,
 ) -> HttpResponse {
+    let claims = match crate::handlers::auth::extract_claims(&req) {
+        Some(c) => c,
+        None => return HttpResponse::Unauthorized().json(ApiResponse::<()>::error("Unauthorized")),
+    };
+
+    if claims.role != "librarian" && claims.role != "addmin" {
+        return HttpResponse::Forbidden().json(ApiResponse::<()>::error("Forbidden: Staff only"));
+    }
+
+    let req = body;
     let now = chrono::Utc::now().to_rfc3339();
     let id = Uuid::new_v4().to_string();
     let copies = req.total_copies.unwrap_or(1) as i32;
@@ -106,9 +117,20 @@ pub async fn create_book(
 
 pub async fn update_book(
     pool: web::Data<DbPool>,
+    req: HttpRequest,
     path: web::Path<String>,
-    req: web::Json<CreateBookRequest>,
+    body: web::Json<CreateBookRequest>,
 ) -> HttpResponse {
+    let claims = match crate::handlers::auth::extract_claims(&req) {
+        Some(c) => c,
+        None => return HttpResponse::Unauthorized().json(ApiResponse::<()>::error("Unauthorized")),
+    };
+
+    if claims.role != "librarian" && claims.role != "addmin" {
+        return HttpResponse::Forbidden().json(ApiResponse::<()>::error("Forbidden: Staff only"));
+    }
+
+    let req = body;
     let now = chrono::Utc::now().to_rfc3339();
     let id = path.into_inner();
 
@@ -132,7 +154,19 @@ pub async fn update_book(
     }
 }
 
-pub async fn delete_book(pool: web::Data<DbPool>, path: web::Path<String>) -> HttpResponse {
+pub async fn delete_book(
+    pool: web::Data<DbPool>,
+    req: HttpRequest,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let claims = match crate::handlers::auth::extract_claims(&req) {
+        Some(c) => c,
+        None => return HttpResponse::Unauthorized().json(ApiResponse::<()>::error("Unauthorized")),
+    };
+
+    if claims.role != "librarian" && claims.role != "addmin" {
+        return HttpResponse::Forbidden().json(ApiResponse::<()>::error("Forbidden: Staff only"));
+    }
     let id = path.into_inner();
     match sqlx::query("DELETE FROM books WHERE id = $1")
         .bind(&id)
