@@ -1,4 +1,5 @@
 #!/bin/bash
+export PATH="$HOME/.cargo/bin:$PATH"
 
 echo "🚀 Starting Library System..."
 echo ""
@@ -8,7 +9,7 @@ echo ""
 
 # Start backend in background
 echo "▶ Starting Rust Backend..."
-cd backend && cargo run &
+(cd backend && cargo run) &
 BACKEND_PID=$!
 
 # Wait for backend to start
@@ -16,7 +17,7 @@ sleep 3
 
 # Start frontend
 echo "▶ Starting Angular Frontend..."
-cd ../frontend && npx ng serve --open &
+(cd frontend && npm start) &
 FRONTEND_PID=$!
 
 echo ""
