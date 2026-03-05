@@ -20,10 +20,14 @@ pub async fn init_db() -> Result<DbPool, sqlx::Error> {
     }
     log::info!("Initializing connection pool...");
 
+    use sqlx::postgres::PgConnectOptions;
+    use std::str::FromStr;
+    let options = PgConnectOptions::from_str(&database_url)?.statement_cache_capacity(0);
+
     let pool = sqlx::postgres::PgPoolOptions::new()
         .max_connections(5)
         .acquire_timeout(std::time::Duration::from_secs(30))
-        .connect(&database_url)
+        .connect_with(options)
         .await?;
 
     log::info!("Checking and updating database schema...");
