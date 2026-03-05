@@ -62,4 +62,16 @@ export class BookService {
     cancelReservation(id: string): Observable<ApiResponse<any>> {
         return this.http.delete<ApiResponse<any>>(`${this.apiUrl}/reservations/${id}`);
     }
+
+    createBook(data: any): Observable<ApiResponse<any>> {
+        return this.http.post<ApiResponse<any>>(`${this.apiUrl}/books`, data);
+    }
+
+    updateBook(id: string, data: any): Observable<ApiResponse<any>> {
+        return this.http.put<ApiResponse<any>>(`${this.apiUrl}/books/${id}`, data);
+    }
+
+    deleteBook(id: string): Observable<ApiResponse<any>> {
+        return this.http.delete<ApiResponse<any>>(`${this.apiUrl}/books/${id}`);
+    }
 }
