@@ -21,6 +21,8 @@ time = "=0.3.36"
 getrandom = "=0.2.15"
 uuid = { version = "=1.10.0", features = ["v4"] }
 rand = "=0.8.5"
+rand_core = "=0.6.4"
+tempfile = "=3.10.1"
 chrono = { version = "0.4.38", features = ["serde"] }
 tokio = { version = "1.38.0", features = ["full"] }
 env_logger = "0.11"
