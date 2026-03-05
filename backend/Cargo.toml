@@ -8,11 +8,12 @@ name = "library-backend"
 path = "src/main.rs"
 
 [dependencies]
-actix-web = "4"
-actix-cors = "0.7"
+actix-web = "=4.9.0"
+actix-http = "=3.9.0"
+actix-cors = "=0.7.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sqlx = { version = "0.7", features = [ "runtime-tokio", "tls-rustls", "postgres", "chrono", "uuid" ] }
+sqlx = { version = "=0.7.3", features = [ "runtime-tokio", "tls-rustls", "postgres", "chrono", "uuid" ] }
 bcrypt = "0.15"
 jsonwebtoken = "9"
 serde_urlencoded = "0.7.1"
@@ -25,6 +26,6 @@ tokio = { version = "1.38.0", features = ["full"] }
 env_logger = "0.11"
 log = "0.4"
 dotenv = "0.15"
-actix-ws = "0.4.0"
+actix-ws = "=0.3.0"
 tokio-stream = "0.1.18"
 futures-util = "0.3.32"
