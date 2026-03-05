@@ -8,7 +8,12 @@ pub struct DbPool {
 
 pub async fn init_db() -> Result<DbPool, sqlx::Error> {
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    let pool = PgPool::connect(&database_url).await?;
+
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(5)
+        .acquire_timeout(std::time::Duration::from_secs(30))
+        .connect(&database_url)
+        .await?;
 
     log::info!("Checking and updating database schema...");
 
