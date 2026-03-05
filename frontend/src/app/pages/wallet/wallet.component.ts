@@ -414,10 +414,10 @@ import { LoadingService } from '../../services/loading.service';
     .loading-s { display:flex; align-items:center; justify-content:center; gap:8px; padding:36px 0; color:var(--text3); font-size:.85rem; }
 
     /* ── GATEWAY MODAL ── */
-    .overlay { position:fixed; inset:0; background:rgba(0,0,0,.75); backdrop-filter:blur(8px); z-index:9000; display:flex; align-items:center; justify-content:center; padding:12px; animation:fadeIn .2s ease; overscroll-behavior: contain; }
+    .overlay { position:fixed; inset:0; background:rgba(0,0,0,.75); backdrop-filter:blur(8px); z-index:9000; display:flex; align-items:center; justify-content:center; padding:12px; animation:fadeIn .2s ease; overscroll-behavior: contain; overflow-y: auto; }
     @keyframes fadeIn { from{opacity:0} to{opacity:1} }
-    .gw-modal { background:var(--bg2); border:1px solid var(--border); border-radius:24px; width:100%; max-width:480px; max-height: 94vh; display: flex; flex-direction: column; overflow:hidden; box-shadow:0 24px 80px rgba(0,0,0,.5); animation:slideUp .25s cubic-bezier(.175,.885,.32,1.275); margin: auto; }
-    @media (max-width: 480px) { .gw-modal { border-radius: 20px 20px 0 0; max-height: 98vh; width: 100%; max-width: none; position: absolute; bottom: 0; } }
+    .gw-modal { background:var(--bg2); border:1px solid var(--border); border-radius:24px; width:100%; max-width:480px; max-height: 92vh; display: flex; flex-direction: column; overflow:hidden; box-shadow:0 24px 80px rgba(0,0,0,.5); animation:slideUp .25s cubic-bezier(.175,.885,.32,1.275); margin: auto; flex-shrink: 0; }
+    @media (max-width: 600px) { .gw-modal { border-radius: 20px; max-height: 90vh; margin: auto; } .overlay { padding: 16px 12px; align-items: center; } }
     @keyframes slideUp { from{opacity:0;transform:translateY(30px)} to{opacity:1;transform:translateY(0)} }
     .gw-header { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border); }
     .gw-header-left { display:flex; align-items:center; gap:12px; }
