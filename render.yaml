@@ -6,9 +6,12 @@ services:
     startCommand: ./target/release/library-backend
     envVars:
       - key: DATABASE_URL
-        sync: false # คุณต้องไปใส่ค่านี้ในหน้าเว็บ Render
+        sync: false
       - key: JWT_SECRET
         value: library_secret_key_2024_very_secure
       - key: SERVER_HOST
         value: 0.0.0.0
+      - key: PORT
+        value: 10000
     rootDir: backend
+    healthCheckPath: /api/books
