@@ -1,4 +1,4 @@
 export const environment = {
     production: true,
-    apiUrl: '/api', // ปรับเป็น URL ของ Backend ที่ Deploy จริง (เช่น https://your-backend.render.com/api)
+    apiUrl: 'https://library-management-production-4cd3.up.railway.app/api',
 };
