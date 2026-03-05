@@ -32,9 +32,12 @@ pub async fn init_db() -> Result<DbPool, sqlx::Error> {
 
     log::info!("Checking and updating database schema...");
 
-    // Create tables following SRS schema (PostgreSQL syntax)
-    sqlx::query(
-        "
+    // Acquire a single connection and use Executor directly
+    // This avoids prepared statement conflicts with Supabase Transaction Pooler (port 6543)
+    use sqlx::Executor;
+    let mut conn = pool.acquire().await?;
+
+    let schema_sql = "
         CREATE TABLE IF NOT EXISTS users (
             id TEXT PRIMARY KEY,
             username TEXT UNIQUE NOT NULL,
@@ -48,43 +51,6 @@ pub async fn init_db() -> Result<DbPool, sqlx::Error> {
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
-    ",
-    )
-    .execute(&pool)
-    .await?;
-
-    // Migration logic for role_check constraint
-    // We attempt to drop standard and potential auto-named constraints
-    let drop_queries = vec![
-        "ALTER TABLE users DROP CONSTRAINT IF EXISTS role_check",
-        "ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check", // Common Postgres default name
-    ];
-
-    for q in drop_queries {
-        match sqlx::query(q).execute(&pool).await {
-            Ok(_) => log::info!("Migration: Executed '{}'", q),
-            Err(e) => log::warn!(
-                "Migration: Query '{}' failed (this may be normal): {}",
-                q,
-                e
-            ),
-        }
-    }
-
-    // Add back the new constraint with 'addmin'
-    match sqlx::query("ALTER TABLE users ADD CONSTRAINT role_check CHECK (role IN ('student', 'professor', 'librarian', 'addmin'))").execute(&pool).await {
-        Ok(_) => log::info!("Migration: Successfully added updated role_check constraint with 'addmin'"),
-        Err(e) => {
-            if e.to_string().contains("already exists") {
-                log::info!("Migration: role_check constraint already updated.");
-            } else {
-                log::error!("Migration: Critical failure adding role_check: {}", e);
-            }
-        }
-    }
-
-    sqlx::query(
-        "
         CREATE TABLE IF NOT EXISTS categories (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
@@ -93,13 +59,6 @@ pub async fn init_db() -> Result<DbPool, sqlx::Error> {
             color TEXT,
             created_at TEXT NOT NULL
         );
-    ",
-    )
-    .execute(&pool)
-    .await?;
-
-    sqlx::query(
-        "
         CREATE TABLE IF NOT EXISTS books (
             id TEXT PRIMARY KEY,
             title TEXT NOT NULL,
@@ -119,13 +78,6 @@ pub async fn init_db() -> Result<DbPool, sqlx::Error> {
             updated_at TEXT NOT NULL,
             CONSTRAINT status_check CHECK (status IN ('available', 'borrowed', 'reserved'))
         );
-    ",
-    )
-    .execute(&pool)
-    .await?;
-
-    sqlx::query(
-        "
         CREATE TABLE IF NOT EXISTS reservations (
             id TEXT PRIMARY KEY,
             user_id TEXT NOT NULL REFERENCES users(id),
@@ -135,13 +87,6 @@ pub async fn init_db() -> Result<DbPool, sqlx::Error> {
             status TEXT NOT NULL DEFAULT 'active',
             CONSTRAINT res_status_check CHECK (status IN ('active', 'cancelled', 'converted'))
         );
-    ",
-    )
-    .execute(&pool)
-    .await?;
-
-    sqlx::query(
-        "
         CREATE TABLE IF NOT EXISTS borrows (
             id TEXT PRIMARY KEY,
             user_id TEXT NOT NULL REFERENCES users(id),
@@ -155,25 +100,11 @@ pub async fn init_db() -> Result<DbPool, sqlx::Error> {
             status TEXT NOT NULL DEFAULT 'active',
             CONSTRAINT borrow_status_check CHECK (status IN ('active', 'returned', 'overdue'))
         );
-    ",
-    )
-    .execute(&pool)
-    .await?;
-
-    sqlx::query(
-        "
         CREATE TABLE IF NOT EXISTS user_interests (
             user_id TEXT NOT NULL REFERENCES users(id),
             category_id TEXT NOT NULL REFERENCES categories(id),
             PRIMARY KEY (user_id, category_id)
         );
-    ",
-    )
-    .execute(&pool)
-    .await?;
-
-    sqlx::query(
-        "
         CREATE TABLE IF NOT EXISTS wallet_transactions (
             id TEXT PRIMARY KEY,
             user_id TEXT NOT NULL REFERENCES users(id),
@@ -182,23 +113,28 @@ pub async fn init_db() -> Result<DbPool, sqlx::Error> {
             description TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL
         );
-    ",
-    )
-    .execute(&pool)
-    .await?;
-
-    sqlx::query(
-        "
         CREATE TABLE IF NOT EXISTS wallets (
             id TEXT PRIMARY KEY,
             user_id TEXT UNIQUE NOT NULL REFERENCES users(id),
             balance DOUBLE PRECISION NOT NULL DEFAULT 0.0,
             updated_at TEXT NOT NULL
         );
-    ",
-    )
-    .execute(&pool)
-    .await?;
+    ";
+    conn.execute(schema_sql).await?;
+
+    // Migration for role_check constraint
+    let migration_queries: Vec<&str> = vec![
+        "ALTER TABLE users DROP CONSTRAINT IF EXISTS role_check",
+        "ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check",
+        "ALTER TABLE users ADD CONSTRAINT role_check CHECK (role IN ('student', 'professor', 'librarian', 'addmin'))",
+    ];
+    for q in migration_queries {
+        match conn.execute(q).await {
+            Ok(_) => log::info!("Migration ok: '{}'", &q[..q.len().min(50)]),
+            Err(e) => log::warn!("Migration skipped (normal): {}", e),
+        }
+    }
+    drop(conn);
 
     // Seed data
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM categories")
@@ -209,6 +145,7 @@ pub async fn init_db() -> Result<DbPool, sqlx::Error> {
         seed_data(&pool).await?;
     }
 
+    log::info!("Database initialized successfully!");
     Ok(DbPool { pool })
 }
 
