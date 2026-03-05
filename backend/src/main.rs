@@ -15,8 +15,10 @@ async fn main() -> std::io::Result<()> {
     env_logger::init_from_env(Env::default().default_filter_or("info"));
     dotenv::dotenv().ok();
 
+    let port = std::env::var("PORT")
+        .or_else(|_| std::env::var("SERVER_PORT"))
+        .unwrap_or_else(|_| "8080".to_string());
     let host = std::env::var("SERVER_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
-    let port = std::env::var("SERVER_PORT").unwrap_or_else(|_| "8080".to_string());
     let bind_addr = format!("{}:{}", host, port);
 
     let pool = db::init_db().await.expect("Failed to initialize database");
